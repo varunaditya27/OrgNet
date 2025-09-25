@@ -7,6 +7,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 ///////////////////////////
@@ -29,13 +30,19 @@ model User {
   name        String
   email       String    @unique
   password    String
-  role        Role
+  role        Role      @default(EMPLOYEE)
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
   parentId    Int?      // points to immediate superior
   parent      User?     @relation("Hierarchy", fields: [parentId], references: [id])
   subordinates User[]   @relation("Hierarchy")
   messagesSent     Message[] @relation("MessagesSent")
   messagesReceived Message[] @relation("MessagesReceived")
   filesOwned       File[]
+  teamsManaged     Team[]
+  teamMemberships  Team[] @relation("TeamMembers")
+  groupMemberships Group[] @relation("GroupMembers")
+  auditLogs        AuditLog[]
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
@@ -57,33 +64,64 @@ model Group {
   id          Int       @id @default(autoincrement())
   name        String
   description String?
-  members     User[]    @relation("GroupMembers", references: [id])
+  members     User[]    @relation("GroupMembers")
   messages    Message[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
 model File {
-  id          Int      @id @default(autoincrement())
-  ownerId     Int
-  path        String   // URL or storage path
-  name        String
-  allowedRole Role     // minimal role required to access
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           Int      @id @default(autoincrement())
+  ownerId      Int
+  fileName     String   // Original file name
+  mimeType     String   // File MIME type
+  size         Int      // File size in bytes
+  s3Key        String   @unique // S3 object key
+  s3Url        String?  // Pre-signed URL (temporary)
+  allowedRole  Role     // minimal role required to access
+  description  String?  // Optional file description
+  isActive     Boolean  @default(true) // Soft delete
+  downloadCount Int     @default(0) // Track downloads
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   owner User @relation(fields: [ownerId], references: [id])
+
+  @@index([ownerId])
+  @@index([allowedRole])
+  @@index([isActive])
 }
 
 model Team {
-  id        Int      @id @default(autoincrement())
-  name      String
-  managerId Int
-  members   User[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  managerId   Int
+  members     User[]   @relation("TeamMembers")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   manager User @relation(fields: [managerId], references: [id])
+}
+
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  action      String   // e.g., "CREATE_USER", "DELETE_TEAM", "OVERRIDE_RBAC"
+  entity      String   // e.g., "User", "Team", "Message", "File"
+  entityId    Int?     // ID of the affected entity
+  details     String?  // Human-readable description
+  metadata    Json?    // Additional structured data
+  ipAddress   String?  // Client IP address
+  userAgent   String?  // Client user agent
+  timestamp   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity])
+  @@index([timestamp])
 }
 
 ///////////////////////////
@@ -93,3 +131,4 @@ model Team {
 // 2. Messaging supports 1-to-1 and group messages (groupId optional)
 // 3. Files enforce minimal role access via allowedRole
 // 4. Teams link a manager to their members (used for RBAC enforcement)
+// 5. AuditLog tracks all admin actions and system events for compliance

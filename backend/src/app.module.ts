@@ -1,9 +1,28 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
+import { MessagingModule } from './messaging/messaging.module';
+import { FilesModule } from './files/files.module';
+import { TeamsModule } from './teams/teams.module';
+import { AdminModule } from './admin/admin.module';
+import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
-  imports: [],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
+    PrismaModule,
+    AuthModule,
+    UsersModule,
+    MessagingModule,
+    FilesModule,
+    TeamsModule,
+    AdminModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
