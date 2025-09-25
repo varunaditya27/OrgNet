@@ -21,10 +21,22 @@ import {
   UserHierarchyDto,
   UserTeamInfoDto,
 } from './dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { HierarchyGuard } from './guards/hierarchy.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { 
+  JwtAuthGuard,
+  RolesGuard,
+  HierarchyGuard,
+  TreeBasedRBACGuard,
+  ResourceAccessGuard,
+  Roles,
+  RequireHierarchyAccess,
+  RequireResourceAccess,
+  HierarchyPermission,
+  ResourcePermission,
+  ManagerAccess,
+  EmployeeAccess,
+  AdminAccess,
+  User,
+} from '../common';
 import { Role } from '../common/enums';
 
 @Controller('users')
@@ -62,7 +74,13 @@ export class UsersController {
   }
 
   @Get(':id')
-  @UseGuards(HierarchyGuard)
+  @UseGuards(TreeBasedRBACGuard)
+  @RequireHierarchyAccess([
+    HierarchyPermission.SELF,
+    HierarchyPermission.DIRECT_SUBORDINATES,
+    HierarchyPermission.DIRECT_SUPERIOR,
+    HierarchyPermission.ALL_USERS,
+  ])
   async findOne(@Param('id', ParseIntPipe) id: number): Promise<UserResponseDto> {
     return this.usersService.findOne(id);
   }

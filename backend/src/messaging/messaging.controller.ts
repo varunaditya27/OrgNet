@@ -13,8 +13,14 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { MessagingService } from './messaging.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { User } from '../common/decorators/user.decorator';
+import { 
+  JwtAuthGuard,
+  CommunicationGuard,
+  User,
+  RequireCommunicationPermission,
+  RequireResourceAccess,
+  ResourcePermission,
+} from '../common';
 import {
   SendMessageDto,
   CreateGroupDto,
@@ -35,6 +41,8 @@ export class MessagingController {
   // Message endpoints
   @Post('send')
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(CommunicationGuard)
+  @RequireCommunicationPermission()
   async sendMessage(
     @Body() sendMessageDto: SendMessageDto,
     @User('id') userId: number,
@@ -79,6 +87,7 @@ export class MessagingController {
 
   @Delete('messages/:messageId')
   @HttpCode(HttpStatus.OK)
+  @RequireResourceAccess('message', [ResourcePermission.OWNER, ResourcePermission.ADMIN_OVERRIDE], { ownerField: 'senderId' })
   async deleteMessage(
     @Param('messageId', ParseIntPipe) messageId: number,
     @User('id') userId: number,
@@ -89,6 +98,8 @@ export class MessagingController {
   // Group endpoints
   @Post('groups')
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(CommunicationGuard)
+  @RequireCommunicationPermission()
   async createGroup(
     @Body() createGroupDto: CreateGroupDto,
     @User('id') userId: number,
