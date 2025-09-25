@@ -131,26 +131,25 @@ export class MessagingService {
           AND "receiverId" IS NOT NULL
       ),
       last_messages AS (
-        SELECT DISTINCT ON (
-          CASE 
-            WHEN "senderId" = ${userId} THEN "receiverId"
-            ELSE "senderId"
-          END
-        )
-          CASE 
-            WHEN "senderId" = ${userId} THEN "receiverId"
-            ELSE "senderId"
-          END as participant_id,
-          id, content, timestamp, "senderId"
-        FROM "Message"
-        WHERE ("senderId" = ${userId} OR "receiverId" = ${userId})
-          AND "receiverId" IS NOT NULL
-        ORDER BY 
-          CASE 
-            WHEN "senderId" = ${userId} THEN "receiverId"
-            ELSE "senderId"
-          END,
-          timestamp DESC
+        SELECT * FROM (
+          SELECT
+            CASE 
+              WHEN "senderId" = ${userId} THEN "receiverId"
+              ELSE "senderId"
+            END as participant_id,
+            id, content, timestamp, "senderId",
+            ROW_NUMBER() OVER (
+              PARTITION BY CASE 
+                WHEN "senderId" = ${userId} THEN "receiverId"
+                ELSE "senderId"
+              END
+              ORDER BY timestamp DESC
+            ) as rn
+          FROM "Message"
+          WHERE ("senderId" = ${userId} OR "receiverId" = ${userId})
+            AND "receiverId" IS NOT NULL
+        ) sub
+        WHERE rn = 1
       )
       SELECT 
         u.id as "participantId",
