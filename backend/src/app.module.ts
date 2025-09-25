@@ -7,6 +7,7 @@ import { UsersModule } from './users/users.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { FilesModule } from './files/files.module';
 import { TeamsModule } from './teams/teams.module';
+import { AdminModule } from './admin/admin.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -20,6 +21,7 @@ import { PrismaModule } from './prisma/prisma.module';
     MessagingModule,
     FilesModule,
     TeamsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],
