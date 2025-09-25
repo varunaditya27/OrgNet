@@ -7,6 +7,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 ///////////////////////////
@@ -29,13 +30,18 @@ model User {
   name        String
   email       String    @unique
   password    String
-  role        Role
+  role        Role      @default(EMPLOYEE)
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
   parentId    Int?      // points to immediate superior
   parent      User?     @relation("Hierarchy", fields: [parentId], references: [id])
   subordinates User[]   @relation("Hierarchy")
   messagesSent     Message[] @relation("MessagesSent")
   messagesReceived Message[] @relation("MessagesReceived")
   filesOwned       File[]
+  teamsManaged     Team[]
+  teamMemberships  Team[] @relation("TeamMembers")
+  groupMemberships Group[] @relation("GroupMembers")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
@@ -57,7 +63,7 @@ model Group {
   id          Int       @id @default(autoincrement())
   name        String
   description String?
-  members     User[]    @relation("GroupMembers", references: [id])
+  members     User[]    @relation("GroupMembers")
   messages    Message[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -79,7 +85,7 @@ model Team {
   id        Int      @id @default(autoincrement())
   name      String
   managerId Int
-  members   User[]
+  members   User[]   @relation("TeamMembers")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
