@@ -4,14 +4,18 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { MessagingModule } from './messaging/messaging.module';
+import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    PrismaModule,
     AuthModule,
     UsersModule,
+    MessagingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
