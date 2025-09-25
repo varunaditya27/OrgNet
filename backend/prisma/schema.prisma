@@ -42,6 +42,7 @@ model User {
   teamsManaged     Team[]
   teamMemberships  Team[] @relation("TeamMembers")
   groupMemberships Group[] @relation("GroupMembers")
+  auditLogs        AuditLog[]
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
@@ -103,6 +104,26 @@ model Team {
   manager User @relation(fields: [managerId], references: [id])
 }
 
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  action      String   // e.g., "CREATE_USER", "DELETE_TEAM", "OVERRIDE_RBAC"
+  entity      String   // e.g., "User", "Team", "Message", "File"
+  entityId    Int?     // ID of the affected entity
+  details     String?  // Human-readable description
+  metadata    Json?    // Additional structured data
+  ipAddress   String?  // Client IP address
+  userAgent   String?  // Client user agent
+  timestamp   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity])
+  @@index([timestamp])
+}
+
 ///////////////////////////
 // NOTES
 ///////////////////////////
@@ -110,3 +131,4 @@ model Team {
 // 2. Messaging supports 1-to-1 and group messages (groupId optional)
 // 3. Files enforce minimal role access via allowedRole
 // 4. Teams link a manager to their members (used for RBAC enforcement)
+// 5. AuditLog tracks all admin actions and system events for compliance
