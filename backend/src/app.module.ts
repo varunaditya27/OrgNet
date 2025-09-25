@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { FilesModule } from './files/files.module';
+import { TeamsModule } from './teams/teams.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -18,6 +19,7 @@ import { PrismaModule } from './prisma/prisma.module';
     UsersModule,
     MessagingModule,
     FilesModule,
+    TeamsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
