@@ -92,12 +92,13 @@ model File {
 }
 
 model Team {
-  id        Int      @id @default(autoincrement())
-  name      String
-  managerId Int
-  members   User[]   @relation("TeamMembers")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  managerId   Int
+  members     User[]   @relation("TeamMembers")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   manager User @relation(fields: [managerId], references: [id])
 }
