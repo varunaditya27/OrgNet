@@ -1,0 +1,95 @@
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+///////////////////////////
+// ENUMS
+///////////////////////////
+
+enum Role {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+  INTERN
+}
+
+///////////////////////////
+// MODELS
+///////////////////////////
+
+model User {
+  id          Int       @id @default(autoincrement())
+  name        String
+  email       String    @unique
+  password    String
+  role        Role
+  parentId    Int?      // points to immediate superior
+  parent      User?     @relation("Hierarchy", fields: [parentId], references: [id])
+  subordinates User[]   @relation("Hierarchy")
+  messagesSent     Message[] @relation("MessagesSent")
+  messagesReceived Message[] @relation("MessagesReceived")
+  filesOwned       File[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Message {
+  id         Int      @id @default(autoincrement())
+  senderId   Int
+  receiverId Int?      // null if group message
+  groupId    Int?      // optional for group messages
+  content    String
+  timestamp  DateTime @default(now())
+
+  sender     User @relation("MessagesSent", fields: [senderId], references: [id])
+  receiver   User? @relation("MessagesReceived", fields: [receiverId], references: [id])
+  group      Group? @relation(fields: [groupId], references: [id])
+}
+
+model Group {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  members     User[]    @relation("GroupMembers", references: [id])
+  messages    Message[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model File {
+  id          Int      @id @default(autoincrement())
+  ownerId     Int
+  path        String   // URL or storage path
+  name        String
+  allowedRole Role     // minimal role required to access
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner User @relation(fields: [ownerId], references: [id])
+}
+
+model Team {
+  id        Int      @id @default(autoincrement())
+  name      String
+  managerId Int
+  members   User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  manager User @relation(fields: [managerId], references: [id])
+}
+
+///////////////////////////
+// NOTES
+///////////////////////////
+// 1. User hierarchy implemented via `parentId` and `subordinates`
+// 2. Messaging supports 1-to-1 and group messages (groupId optional)
+// 3. Files enforce minimal role access via allowedRole
+// 4. Teams link a manager to their members (used for RBAC enforcement)
