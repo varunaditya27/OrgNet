@@ -1,128 +1,198 @@
-# 🌐 OrgNet
 
-**OrgNet** is a private, role-based internal communication and collaboration platform for small-to-mid sized organizations. It is designed with a **top-down tree hierarchy** (like an org chart), ensuring secure, structured communication while maintaining complete end-to-end encryption.
+# 🌐 OrgNet: Enterprise Collaboration Platform
+
+OrgNet is a world-class, enterprise-grade collaboration suite for modern organizations. It unites a robust, RBAC-enforced backend (NestJS, PostgreSQL, Prisma) with a production-ready, real-time React frontend (Vite, Zustand, React Query, Tailwind CSS). OrgNet empowers teams with secure communication, dynamic team management, file sharing, and compliance—delivering a seamless, delightful experience for both users and developers.
 
 ---
+
 
 ## 🚀 Key Features
 
-1. **Tree-Based RBAC (Role-Based Access Control)**
-
-   * Hierarchical structure with parent-child relationships.
-   * Immediate communication only:
-
-     * Employees → can connect with peers **and their immediate superior**.
-     * Managers → can connect only with their **direct team** (not other teams).
-   * Prevents cross-hierarchy chaos, ensures streamlined communication.
-
-2. **Secure Communication**
-
-   * End-to-End Encryption (E2EE) for all messages, files, and calls.
-   * Zero upward visibility unless explicitly permitted.
-   * Audit logs for superiors to track activity responsibly.
-
-3. **Collaboration Tools**
-
-   * Direct and group messaging.
-   * Task & project management boards.
-   * File/document sharing with versioning.
-   * Company-wide announcements (role-specific visibility).
-
-4. **Role Management & Access Control**
-
-   * Define roles: Admin, Manager, Employee, Intern, etc.
-   * Assign permissions dynamically.
-   * Auto-generate organizational chart from role hierarchy.
-
-5. **Production-Ready & Scalable**
-
-   * Built on modern backend frameworks (FastAPI/NestJS).
-   * Real-time communication (WebSockets).
-   * PostgreSQL for structured RBAC data.
-   * Cloud-native (Docker, Kubernetes) for seamless scaling.
+- **🔐 Zero-Trust RBAC**: Tree-based, hierarchical role-based access control (ADMIN, MANAGER, EMPLOYEE, INTERN) enforced everywhere—API, WebSocket, UI, and files.
+- **💬 Real-Time Messaging**: Socket.IO-powered chat with typing indicators, read receipts, presence, and seamless REST fallback.
+- **🧩 Modular Architecture**: Clean separation of concerns—auth, users, teams, messaging, files, admin, audit—all as independent, composable modules.
+- **🕵️‍♂️ Audit & Compliance**: Every admin/override action is logged with metadata, IP, and user agent for full traceability and compliance.
+- **✨ Modern UI/UX**: shadcn-inspired primitives, dark mode, command palette, and responsive layouts for a delightful user experience.
+- **🛠️ Production Discipline**: Strict TypeScript, ESLint, CI-friendly scripts, and Docker/Kubernetes-ready deployment.
+- **🛡️ Scalable & Secure**: JWT authentication, S3-compatible file storage, input validation, SQL injection protection, soft delete, and more.
 
 ---
 
-## 📖 How OrgNet Works
-
-* **Hierarchy as a Tree:**
-
-  * Root: Organization Admin.
-  * Internal nodes: Managers.
-  * Leaves: Employees/Interns.
-* **Communication Rules:**
-
-  * Downward: Managers can only communicate with their **direct subtree**.
-  * Upward: Employees can only message their **immediate superior**.
-  * Horizontal: Peers (same level, same team) can collaborate.
-* **Security:**
-
-  * All communication is encrypted (Signal Protocol).
-  * Role claims are embedded in JWTs to enforce RBAC at every request.
 
 ---
 
-## 🛠️ Tech Stack
+## 🏗️ Monorepo Structure
 
-* **Frontend:** React + TailwindCSS + TypeScript + shadcn/ui
-* **Backend:** NestJS (Node.js)
-* **Database:** PostgreSQL + Prisma (RBAC & messaging data)
-* **Storage:** S3-compatible (media & file sharing)
-* **Messaging Layer:** WebSockets (Socket.IO / native ws)
-* **Encryption:** Signal Protocol for E2EE
-* **Deployment:** Docker + Kubernetes (scalable microservices)
-
----
-
-## 📦 Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/your-org/OrgNet.git
-cd OrgNet
-
-# Backend setup
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload
-
-# Frontend setup
-cd frontend
-npm install
-npm run dev
+```
+OrgNet/
+├─ backend/    # NestJS API, RBAC, WebSocket, Prisma, PostgreSQL
+│  ├─ src/
+│  │  ├─ auth/        # Authentication & RBAC
+│  │  ├─ users/       # User management & hierarchy
+│  │  ├─ teams/       # Team management
+│  │  ├─ messaging/   # Real-time & REST messaging
+│  │  ├─ files/       # Secure file storage
+│  │  ├─ admin/       # Admin override, audit, stats
+│  │  ├─ common/      # Guards, decorators, enums
+│  │  └─ ...
+│  ├─ prisma/         # Database schema
+│  └─ ...
+├─ frontend/   # React 19 SPA, Vite, Zustand, shadcn, Socket.IO
+│  ├─ src/
+│  │  ├─ api/         # Axios + REST abstractions
+│  │  ├─ components/  # UI primitives, layout
+│  │  ├─ hooks/       # React Query, auth, realtime
+│  │  ├─ pages/       # Feature modules
+│  │  ├─ store/       # Zustand stores
+│  │  └─ ...
+│  └─ ...
+└─ README.md   # (You are here)
 ```
 
 ---
 
-## 🔒 Security Principles
-
-* **End-to-End Encryption (E2EE):** No one outside sender & receiver can read messages.
-* **Strict RBAC Tree Model:** Prevents lateral/cross-hierarchy communication.
-* **Zero Knowledge Storage:** Servers cannot decrypt stored content.
-* **Auditability:** All actions logged for compliance without breaking privacy.
 
 ---
 
-## 📈 Roadmap
+## 🛡️ RBAC & Security Philosophy
 
-* [ ] AI-powered summaries of team updates for managers.
-* [ ] Plugin system for HR (leave requests, polls, attendance).
-* [ ] Mobile push notifications with E2EE.
+- **Tree-Based RBAC**: Hierarchical access enforced at every layer (API, WebSocket, UI)
+- **Custom Guards & Decorators**: Fine-grained, reusable access control for every scenario
+- **Soft Delete**: Users/files are deactivated, not hard deleted (except by admin)
+- **Comprehensive Audit Logging**: All admin/override actions are logged for compliance and traceability
+- **Input Validation**: DTOs with class-validator (backend), Zod (frontend)
+- **SQL Injection Protection**: Prisma ORM
+
+### RBAC Hierarchy
+
+```
+ADMIN (Full Access)
+├── MANAGER (Team + Subordinate Access)
+│   ├── EMPLOYEE (Peer + Superior Access)
+│   │   └── INTERN (Self Access Only)
+│   └── INTERN (Self Access Only)
+└── EMPLOYEE (Peer + Superior Access)
+    └── INTERN (Self Access Only)
+```
+
+---
+
+
+---
+
+## 🧰 Tech Stack
+
+- **Backend:** NestJS (TypeScript), Prisma, PostgreSQL, Socket.IO, S3-compatible storage
+- **Frontend:** React 19, Vite, Zustand, React Query, Tailwind CSS, shadcn/ui, Radix UI, Socket.IO client
+- **DevOps:** Docker, Kubernetes-ready, CI-friendly scripts
+
+---
+
+
+---
+
+## ⚡ Quickstart
+
+### 1. Clone & Install
+```bash
+# Clone the repo
+$ git clone https://github.com/varunaditya27/OrgNet.git
+$ cd OrgNet
+
+# Install backend dependencies
+$ cd backend
+$ npm install
+
+# Install frontend dependencies
+$ cd ../frontend
+$ npm install
+```
+
+### 2. Environment Setup
+- Copy `.env.example` to `.env` in both `backend/` and `frontend/`.
+- Set required variables (see module READMEs for details).
+
+### 3. Database & Prisma
+```bash
+# In backend/
+$ npx prisma generate --schema=../database/schema.prisma
+$ npx prisma migrate dev --schema=../database/schema.prisma
+```
+
+### 4. Run Development Servers
+```bash
+# Start backend (http://localhost:3000)
+$ cd backend
+$ npm run start:dev
+
+# Start frontend (http://localhost:5173)
+$ cd ../frontend
+$ npm run dev
+```
+
+---
+
+
+---
+
+## 🧩 Core Modules
+
+- **🔑 Authentication**: JWT login, registration, profile, RBAC guards ([auth README](./backend/src/auth/README.md))
+- **👤 Users**: CRUD, hierarchy, team integration, soft delete ([users README](./backend/src/users/README.md))
+- **🏢 Teams**: Team creation, membership, manager assignment, RBAC ([teams README](./backend/src/teams/README.md))
+- **💬 Messaging**: One-to-one, group, real-time chat, REST + WebSocket ([messaging README](./backend/src/messaging/README.md))
+- **📁 Files**: Secure upload/download, S3-compatible, RBAC ([files README](./backend/src/files/README.md))
+- **🛡️ Admin**: Admin override, audit logs, stats, hierarchy management ([admin README](./backend/src/admin/README.md))
+
+---
+
+
+---
+
+## 💬 Real-Time Messaging
+
+- **Socket.IO** endpoint: `ws://localhost:3000/messaging`
+- JWT authentication required for all connections
+- Typing indicators, read receipts, presence, and room management
+- All events RBAC-protected (see [WebSocket README](./backend/src/messaging/WEBSOCKET_README.md))
+
+---
+
+
+---
+
+## 📊 Audit Logging & Compliance
+
+- Every admin/override action is logged with full metadata
+- Filterable audit logs by action, user, entity, and date
+- IP address and user agent tracking for all sensitive actions
+
+---
+
+
+---
+
+## 📚 Further Documentation
+
+- [Backend README](./backend/README.md)
+- [Frontend README](./frontend/README.md)
+- [RBAC System](./backend/src/common/RBAC_README.md)
+- [Auth Module](./backend/src/auth/README.md)
+- [Users Module](./backend/src/users/README.md)
+- [Teams Module](./backend/src/teams/README.md)
+- [Messaging Module](./backend/src/messaging/README.md)
+- [Files Module](./backend/src/files/README.md)
+- [Admin Module](./backend/src/admin/README.md)
+- [WebSocket Real-Time](./backend/src/messaging/WEBSOCKET_README.md)
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions! Please check out our [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome! Please open issues or pull requests for improvements, bug fixes, or new features.
 
 ---
 
-## 📜 License
+## © License
 
-OrgNet is licensed under the MIT License. See [LICENSE](LICENSE) for more details.
-
----
-
-### 🔑 Summary
-
-OrgNet isn’t just another messaging app. It’s a **secure, role-based organizational network** designed for productivity, privacy, and structure — built to scale with your team while keeping communication clean and controlled.
+MIT License. See [LICENSE](./LICENSE) for details.
