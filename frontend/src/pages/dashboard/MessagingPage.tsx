@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { MessageSquare, Plus, Users } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import {
   Form,
@@ -20,7 +22,9 @@ import { PageHeader } from '@/components/ui/page-header'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
-import { useConversationsQuery, useMessagesQuery, useSendMessageMutation } from '@/hooks/api/messaging'
+import { Checkbox } from '@/components/ui/checkbox'
+import { useConversationsQuery, useMessagesQuery, useSendMessageMutation, useCreateGroupMutation, useGroupsQuery } from '@/hooks/api/messaging'
+import { useAdminUsersQuery } from '@/hooks/api/admin'
 import { useMessaging } from '@/hooks/useMessaging'
 import { useAuth } from '@/hooks/useAuth'
 import {
@@ -34,13 +38,20 @@ const messageSchema = z.object({
   content: z.string().min(1, 'Enter a message before sending'),
 })
 
-type MessageFormValues = z.infer<typeof messageSchema>
+const groupSchema = z.object({
+  name: z.string().min(2, 'Group name must be at least 2 characters'),
+  description: z.string().optional(),
+  memberIds: z.array(z.number()).min(1, 'Select at least one member'),
+})
 
-const getConversationKey = (conversation: ConversationSummary): number | null => {
-  if (conversation.isGroup) {
-    return conversation.groupId ?? null
+type MessageFormValues = z.infer<typeof messageSchema>
+type GroupFormValues = z.infer<typeof groupSchema>
+
+const getConversationKey = (conversation: ConversationSummary): string => {
+  if (conversation.isGroup && conversation.groupId) {
+    return `group:${conversation.groupId}`
   }
-  return conversation.participantId ?? null
+  return `direct:${conversation.participantId}`
 }
 
 const getConversationIdentifier = (
@@ -48,8 +59,8 @@ const getConversationIdentifier = (
   currentUserId?: number,
 ): string | null => {
   if (!conversation) return null
-  if (conversation.isGroup) {
-    return conversation.groupId ? `group:${conversation.groupId}` : null
+  if (conversation.isGroup && conversation.groupId) {
+    return `group:${conversation.groupId}`
   }
   if (!currentUserId || !conversation.participantId) return null
   const sorted = [conversation.participantId, currentUserId].sort((a, b) => a - b)
@@ -65,29 +76,45 @@ const PRESENCE_COLOR: Record<PresenceStatus, string> = {
 const MessagingPage = () => {
   const { user } = useAuth()
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedKey, setSelectedKey] = useState<number | null>(null)
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [createGroupOpen, setCreateGroupOpen] = useState(false)
 
   const conversationsQuery = useConversationsQuery({
     search: searchTerm || undefined,
   })
 
-  const conversations = useMemo(() => conversationsQuery.data ?? [], [conversationsQuery.data])
+  const groupsQuery = useGroupsQuery()
+  const usersQuery = useAdminUsersQuery()
+
+  // Combine direct conversations and groups
+  const allConversations = useMemo(() => {
+    const directConversations = conversationsQuery.data ?? []
+    const groups = groupsQuery.data ?? []
+    
+    const groupConversations: ConversationSummary[] = groups.map(group => ({
+      participantId: 0, // Not used for groups
+      participantName: group.name,
+      participantEmail: group.description || `${group.members.length} members`,
+      lastMessage: undefined, // Could be enhanced to show last group message
+      unreadCount: 0,
+      isGroup: true,
+      groupId: group.id,
+    }))
+
+    return [...directConversations, ...groupConversations]
+  }, [conversationsQuery.data, groupsQuery.data])
 
   const selectedConversation = useMemo(() => {
     if (!selectedKey) return null
-    return conversations.find((conversation) => getConversationKey(conversation) === selectedKey) ?? null
-  }, [conversations, selectedKey])
+    return allConversations.find((conversation) => getConversationKey(conversation) === selectedKey) ?? null
+  }, [allConversations, selectedKey])
 
   useEffect(() => {
-    if (!selectedConversation && conversations.length > 0) {
-      const firstKey = conversations
-        .map(getConversationKey)
-        .find((key) => key !== null)
-      if (firstKey) {
-        setSelectedKey(firstKey)
-      }
+    if (!selectedConversation && allConversations.length > 0) {
+      const firstKey = getConversationKey(allConversations[0])
+      setSelectedKey(firstKey)
     }
-  }, [conversations, selectedConversation])
+  }, [allConversations, selectedConversation])
 
   const { isConnected, markMessageRead, requestOnlineUsers } = useMessaging()
   const presenceByUser = useMessagingStore((state) => state.presenceByUser)
@@ -106,13 +133,22 @@ const MessagingPage = () => {
     return entries ? Object.values(entries) : []
   }, [selectedConversationId, typingByConversation])
 
+  // Get messages for selected conversation
+  const messagesParams = useMemo(() => {
+    if (!selectedConversation) return { receiverId: 0 }
+    if (selectedConversation.isGroup && selectedConversation.groupId) {
+      return { groupId: selectedConversation.groupId }
+    }
+    return { receiverId: selectedConversation.participantId }
+  }, [selectedConversation])
+
   const messagesQuery = useMessagesQuery({
-    conversationId: selectedKey ?? 0,
+    ...messagesParams,
     page: 1,
     limit: 50,
   })
 
-  const messages = useMemo(() => messagesQuery.data?.data ?? [], [messagesQuery.data])
+  const messages = useMemo(() => messagesQuery.data?.messages ?? [], [messagesQuery.data])
 
   useEffect(() => {
     if (!isConnected) return
@@ -158,10 +194,20 @@ const MessagingPage = () => {
             <ConnectionStatusBadge connected={isConnected} />
             <Button
               variant="outline"
-              onClick={() => conversationsQuery.refetch()}
-              disabled={conversationsQuery.isFetching}
+              onClick={() => setCreateGroupOpen(true)}
             >
-              {conversationsQuery.isFetching ? 'Refreshing…' : 'Refresh list'}
+              <Plus className="mr-2 h-4 w-4" />
+              Create group
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                conversationsQuery.refetch()
+                groupsQuery.refetch()
+              }}
+              disabled={conversationsQuery.isFetching || groupsQuery.isFetching}
+            >
+              {conversationsQuery.isFetching || groupsQuery.isFetching ? 'Refreshing…' : 'Refresh'}
             </Button>
           </div>
         }
@@ -185,20 +231,25 @@ const MessagingPage = () => {
             </form>
 
             <ScrollArea className="h-[55vh] max-h-[500px] pr-4">
-              {conversationsQuery.isLoading ? (
+              {conversationsQuery.isLoading || groupsQuery.isLoading ? (
                 <div className="flex h-32 items-center justify-center">
                   <Spinner />
                 </div>
-              ) : conversations.length === 0 ? (
+              ) : allConversations.length === 0 ? (
                 <EmptyState
                   title="No conversations yet"
-                  description="Start a new conversation by selecting a teammate from the directory."
+                  description="Start a new conversation by creating a group or messaging a teammate."
+                  action={
+                    <Button variant="outline" onClick={() => setCreateGroupOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create group
+                    </Button>
+                  }
                 />
               ) : (
                 <ul className="space-y-2">
-                  {conversations.map((conversation) => {
+                  {allConversations.map((conversation) => {
                     const key = getConversationKey(conversation)
-                    if (!key) return null
                     const isActive = selectedKey === key
                     const presenceStatus: PresenceStatus | undefined = !conversation.isGroup
                       ? presenceByUser[conversation.participantId]?.status ?? 'offline'
@@ -215,7 +266,7 @@ const MessagingPage = () => {
                               {!conversation.isGroup ? (
                                 <PresenceDot status={presenceStatus} />
                               ) : (
-                                <span className="mt-1 h-2 w-2 rounded-full bg-primary/40" />
+                                <Users className="mt-1 h-4 w-4 text-primary/60" />
                               )}
                               <div>
                                 <p className="text-sm font-semibold text-foreground">
@@ -230,11 +281,9 @@ const MessagingPage = () => {
                               <Badge variant="info">{conversation.unreadCount}</Badge>
                             ) : null}
                           </div>
-                          {conversation.isGroup ? (
-                            <p className="mt-1 text-xs text-muted-foreground">Group channel</p>
-                          ) : (
-                            <p className="mt-1 text-xs text-muted-foreground">{conversation.participantEmail}</p>
-                          )}
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {conversation.isGroup ? 'Group channel' : conversation.participantEmail}
+                          </p>
                         </button>
                       </li>
                     )
@@ -247,7 +296,12 @@ const MessagingPage = () => {
 
         <Card className="lg:h-[calc(100vh-220px)]">
           <CardHeader>
-            <CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              {selectedConversation?.isGroup ? (
+                <Users className="h-5 w-5" />
+              ) : (
+                <MessageSquare className="h-5 w-5" />
+              )}
               {selectedConversation?.participantName ?? 'Select a conversation'}
             </CardTitle>
           </CardHeader>
@@ -291,13 +345,27 @@ const MessagingPage = () => {
 
                 <MessageComposer
                   conversation={selectedConversation}
-                  onMessageSent={() => messagesQuery.refetch()}
+                  onMessageSent={() => {
+                    messagesQuery.refetch()
+                    conversationsQuery.refetch()
+                  }}
                 />
               </>
             )}
           </CardContent>
         </Card>
       </div>
+
+      <CreateGroupDialog
+        open={createGroupOpen}
+        onOpenChange={setCreateGroupOpen}
+        users={usersQuery.data ?? []}
+        onCreated={() => {
+          setCreateGroupOpen(false)
+          groupsQuery.refetch()
+          conversationsQuery.refetch()
+        }}
+      />
     </div>
   )
 }
@@ -385,11 +453,12 @@ const MessageComposer = ({ conversation, onMessageSent }: MessageComposerProps) 
   const sendMutation = useSendMessageMutation()
   const [isRealtimeSending, setIsRealtimeSending] = useState(false)
   const [hasNotifiedTyping, setHasNotifiedTyping] = useState(false)
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const typingTarget = useMemo(() => {
     if (!conversation) return null
-    if (conversation.isGroup) {
-      return conversation.groupId ? { groupId: conversation.groupId } : null
+    if (conversation.isGroup && conversation.groupId) {
+      return { groupId: conversation.groupId }
     }
     return conversation.participantId ? { receiverId: conversation.participantId } : null
   }, [conversation])
@@ -413,9 +482,23 @@ const MessageComposer = ({ conversation, onMessageSent }: MessageComposerProps) 
       setHasNotifiedTyping(false)
     }
 
+    // Clear typing indicator after 3 seconds of no typing
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current)
+    }
+
+    if (contentValue && hasNotifiedTyping) {
+      typingTimeoutRef.current = setTimeout(() => {
+        if (typingTarget) {
+          stopTyping(typingTarget)
+          setHasNotifiedTyping(false)
+        }
+      }, 3000)
+    }
+
     return () => {
-      if (hasNotifiedTyping && typingTarget) {
-        stopTyping(typingTarget)
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
       }
     }
   }, [contentValue, hasNotifiedTyping, isConnected, startTyping, stopTyping, typingTarget])
@@ -424,8 +507,7 @@ const MessageComposer = ({ conversation, onMessageSent }: MessageComposerProps) 
     const payload: { content: string; receiverId?: number; groupId?: number } = {
       content: values.content,
     }
-    if (conversation.isGroup) {
-      if (!conversation.groupId) return
+    if (conversation.isGroup && conversation.groupId) {
       payload.groupId = conversation.groupId
     } else {
       payload.receiverId = conversation.participantId
@@ -499,5 +581,128 @@ const MessageComposer = ({ conversation, onMessageSent }: MessageComposerProps) 
         </div>
       </form>
     </Form>
+  )
+}
+
+interface CreateGroupDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  users: Array<{ id: number; name: string; email: string; role: string }>
+  onCreated: () => void
+}
+
+const CreateGroupDialog = ({ open, onOpenChange, users, onCreated }: CreateGroupDialogProps) => {
+  const form = useForm<GroupFormValues>({
+    resolver: zodResolver(groupSchema),
+    defaultValues: {
+      name: '',
+      description: '',
+      memberIds: [],
+    },
+  })
+  const createMutation = useCreateGroupMutation()
+
+  const onSubmit = async (values: GroupFormValues) => {
+    await createMutation.mutateAsync(values)
+    form.reset()
+    onCreated()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Create group</DialogTitle>
+          <DialogDescription>
+            Start a secure group conversation with your teammates.
+          </DialogDescription>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form className="space-y-5" onSubmit={form.handleSubmit(onSubmit)}>
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Group name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Project Alpha Team" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description (optional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Purpose or context" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="memberIds"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Members</FormLabel>
+                  <FormControl>
+                    <ScrollArea className="max-h-48 rounded-md border p-3">
+                      <div className="space-y-2">
+                        {users.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No users available.</p>
+                        ) : (
+                          users.map((user) => {
+                            const checked = field.value.includes(user.id)
+                            return (
+                              <label key={user.id} className="flex items-center gap-3 text-sm">
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={(isChecked) => {
+                                    if (isChecked) {
+                                      field.onChange([...field.value, user.id])
+                                    } else {
+                                      field.onChange(field.value.filter((id) => id !== user.id))
+                                    }
+                                  }}
+                                />
+                                <span className="flex-1">
+                                  <span className="font-medium text-foreground">{user.name}</span>
+                                  <span className="block text-xs text-muted-foreground">
+                                    {user.email}
+                                  </span>
+                                </span>
+                              </label>
+                            )
+                          })
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? 'Creating…' : 'Create group'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
   )
 }

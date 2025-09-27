@@ -44,13 +44,23 @@ export interface Message {
   groupId?: number | null
   timestamp: string
   sender: UserSummary
+  receiver?: UserSummary | null
+  group?: {
+    id: number
+    name: string
+  } | null
 }
 
 export interface ConversationSummary {
   participantId: number
   participantName: string
   participantEmail: string
-  lastMessage?: Message
+  lastMessage?: {
+    id: number
+    content: string
+    timestamp: string
+    senderId: number
+  } | null
   unreadCount: number
   isGroup?: boolean
   groupId?: number

@@ -35,7 +35,6 @@ import {
 } from '@/components/ui/table'
 import { downloadFile } from '@/api/files'
 import {
-  useDeactivateFileMutation,
   useDeleteFileMutation,
   useFilesQuery,
   useUploadFileMutation,
@@ -79,7 +78,6 @@ const FilesPage = () => {
 
   const filesQuery = useFilesQuery(params)
   const uploadMutation = useUploadFileMutation()
-  const deactivateMutation = useDeactivateFileMutation()
   const deleteMutation = useDeleteFileMutation()
 
   const files = filesQuery.data?.data ?? []
@@ -101,8 +99,8 @@ const FilesPage = () => {
   const handleDownload = async (file: FileItem) => {
     try {
       const payload = await downloadFile(file.id)
-      if (payload.url) {
-        window.open(payload.url, '_blank', 'noopener')
+      if (payload.downloadUrl) {
+        window.open(payload.downloadUrl, '_blank', 'noopener')
       }
     } catch (error) {
       toast.error(getErrorMessage(error))
@@ -256,25 +254,6 @@ const FilesPage = () => {
                             >
                               <Download className="h-4 w-4" />
                             </Button>
-                            {file.isActive ? (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => deactivateMutation.mutateAsync(file.id)}
-                                disabled={deactivateMutation.isPending}
-                              >
-                                Disable
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => deactivateMutation.mutateAsync(file.id)}
-                                disabled={deactivateMutation.isPending}
-                              >
-                                Restore
-                              </Button>
-                            )}
                             <Button
                               variant="ghost"
                               size="sm"

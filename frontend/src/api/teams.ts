@@ -9,6 +9,25 @@ export interface TeamQueryParams {
   managerId?: number
 }
 
+export interface CreateTeamPayload {
+  name: string
+  description?: string
+  memberIds?: number[]
+}
+
+export interface UpdateTeamPayload {
+  name?: string
+  description?: string
+}
+
+export interface AddMembersPayload {
+  memberIds: number[]
+}
+
+export interface RemoveMembersPayload {
+  memberIds: number[]
+}
+
 export const listTeams = async (params: TeamQueryParams = {}) => {
   const { data } = await apiClient.get<PaginatedResponse<Team>>(
     API_ENDPOINTS.teams.base,
@@ -22,22 +41,9 @@ export const getTeamById = async (id: number | string) => {
   return data
 }
 
-export interface CreateTeamPayload {
-  name: string
-  description?: string
-  managerId: number
-  memberIds?: number[]
-}
-
 export const createTeam = async (payload: CreateTeamPayload) => {
   const { data } = await apiClient.post<Team>(API_ENDPOINTS.teams.base, payload)
   return data
-}
-
-export interface UpdateTeamPayload {
-  name?: string
-  description?: string
-  managerId?: number
 }
 
 export const updateTeam = async (
@@ -51,25 +57,43 @@ export const updateTeam = async (
   return data
 }
 
+export const addTeamMembers = async (
+  teamId: number | string,
+  payload: AddMembersPayload,
+) => {
+  const { data } = await apiClient.post<Team>(
+    API_ENDPOINTS.teams.members(teamId),
+    payload,
+  )
+  return data
+}
+
+export const removeTeamMembers = async (
+  teamId: number | string,
+  payload: RemoveMembersPayload,
+) => {
+  const { data } = await apiClient.delete<Team>(
+    API_ENDPOINTS.teams.members(teamId),
+    { data: payload },
+  )
+  return data
+}
+
 export const listManagedTeams = async () => {
   const { data } = await apiClient.get<Team[]>(API_ENDPOINTS.teams.managed)
   return data
 }
 
-export const addTeamMember = async (
-  teamId: number | string,
-  memberId: number,
-) => {
-  const { data } = await apiClient.post<TeamMember>(
-    `${API_ENDPOINTS.teams.members(teamId)}`,
-    { memberId },
+export const getTeamsByManager = async (managerId: number | string) => {
+  const { data } = await apiClient.get<Team[]>(
+    API_ENDPOINTS.teams.managedByManager(managerId),
   )
   return data
 }
 
-export const removeTeamMember = async (
-  teamId: number | string,
-  memberId: number,
-) => {
-  await apiClient.delete(`${API_ENDPOINTS.teams.members(teamId)}/${memberId}`)
+export const deleteTeam = async (id: number | string) => {
+  const { data } = await apiClient.delete<{ message: string }>(
+    API_ENDPOINTS.teams.detail(id),
+  )
+  return data
 }

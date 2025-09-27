@@ -23,7 +23,7 @@ import { Badge } from '@/components/ui/badge'
 
 const AdminPage = () => {
   const statsQuery = useSystemStatsQuery()
-  const usersQuery = useAdminUsersQuery()
+  const usersQuery = useAdminUsersQuery({ role: undefined, includeDeleted: false })
   const teamsQuery = useAdminTeamsQuery()
 
   return (
@@ -84,7 +84,7 @@ const AdminPage = () => {
                   <Skeleton key={index} className="h-12 rounded-md" />
                 ))}
               </div>
-            ) : usersQuery.data?.length ? (
+            ) : usersQuery.data?.data?.length ? (
               <ScrollArea className="max-h-[360px] pr-4">
                 <Table>
                   <TableHeader>
@@ -95,7 +95,7 @@ const AdminPage = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {usersQuery.data
+                    {usersQuery.data.data
                       .filter((user) => ['ADMIN', 'MANAGER'].includes(user.role))
                       .map((user) => (
                         <TableRow key={user.id}>
@@ -132,7 +132,7 @@ const AdminPage = () => {
                   <Skeleton key={index} className="h-12 rounded-md" />
                 ))}
               </div>
-            ) : teamsQuery.data?.length ? (
+            ) : teamsQuery.data?.data?.length ? (
               <ScrollArea className="max-h-[360px] pr-4">
                 <Table>
                   <TableHeader>
@@ -143,7 +143,7 @@ const AdminPage = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {teamsQuery.data.map((team) => (
+                    {teamsQuery.data.data.map((team) => (
                       <TableRow key={team.id}>
                         <TableCell>
                           <div className="font-medium text-foreground">{team.name}</div>
