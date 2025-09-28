@@ -92,6 +92,7 @@ export interface PaginatedResponse<T> {
     total: number
     totalPages: number
   }
+  hasMore?: boolean
 }
 
 export interface SystemStats {
