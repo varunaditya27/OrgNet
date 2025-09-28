@@ -26,6 +26,11 @@ const AdminPage = () => {
   const usersQuery = useAdminUsersQuery()
   const teamsQuery = useAdminTeamsQuery()
 
+  const privilegedUsers = (usersQuery.data?.data ?? []).filter((user) =>
+    ['ADMIN', 'MANAGER'].includes(user.role),
+  )
+  const adminTeams = teamsQuery.data?.data ?? []
+
   return (
     <div className="space-y-10">
       <PageHeader
@@ -84,7 +89,7 @@ const AdminPage = () => {
                   <Skeleton key={index} className="h-12 rounded-md" />
                 ))}
               </div>
-            ) : usersQuery.data?.length ? (
+            ) : privilegedUsers.length ? (
               <ScrollArea className="max-h-[360px] pr-4">
                 <Table>
                   <TableHeader>
@@ -95,20 +100,18 @@ const AdminPage = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {usersQuery.data
-                      .filter((user) => ['ADMIN', 'MANAGER'].includes(user.role))
-                      .map((user) => (
-                        <TableRow key={user.id}>
-                          <TableCell>
-                            <div className="text-sm font-medium text-foreground">{user.name}</div>
-                            <div className="text-xs text-muted-foreground">ID: {user.id}</div>
-                          </TableCell>
-                          <TableCell>{user.email}</TableCell>
-                          <TableCell>
-                            <RoleBadge role={user.role} />
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                    {privilegedUsers.map((user) => (
+                      <TableRow key={user.id}>
+                        <TableCell>
+                          <div className="text-sm font-medium text-foreground">{user.name}</div>
+                          <div className="text-xs text-muted-foreground">ID: {user.id}</div>
+                        </TableCell>
+                        <TableCell>{user.email}</TableCell>
+                        <TableCell>
+                          <RoleBadge role={user.role} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </ScrollArea>
@@ -132,7 +135,7 @@ const AdminPage = () => {
                   <Skeleton key={index} className="h-12 rounded-md" />
                 ))}
               </div>
-            ) : teamsQuery.data?.length ? (
+            ) : adminTeams.length ? (
               <ScrollArea className="max-h-[360px] pr-4">
                 <Table>
                   <TableHeader>
@@ -143,7 +146,7 @@ const AdminPage = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {teamsQuery.data.map((team) => (
+                    {adminTeams.map((team) => (
                       <TableRow key={team.id}>
                         <TableCell>
                           <div className="font-medium text-foreground">{team.name}</div>

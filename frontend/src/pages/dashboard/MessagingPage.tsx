@@ -21,6 +21,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 import { useConversationsQuery, useMessagesQuery, useSendMessageMutation } from '@/hooks/api/messaging'
+import type { MessagesQueryParams } from '@/api/messaging'
 import { useMessaging } from '@/hooks/useMessaging'
 import { useAuth } from '@/hooks/useAuth'
 import {
@@ -106,11 +107,27 @@ const MessagingPage = () => {
     return entries ? Object.values(entries) : []
   }, [selectedConversationId, typingByConversation])
 
-  const messagesQuery = useMessagesQuery({
-    conversationId: selectedKey ?? 0,
-    page: 1,
-    limit: 50,
-  })
+  const messageQueryParams = useMemo<MessagesQueryParams>(() => {
+    if (!selectedConversation) {
+      return { page: 1, limit: 50 }
+    }
+
+    if (selectedConversation.isGroup) {
+      return {
+        groupId: selectedConversation.groupId ?? undefined,
+        page: 1,
+        limit: 50,
+      }
+    }
+
+    return {
+      receiverId: selectedConversation.participantId ?? undefined,
+      page: 1,
+      limit: 50,
+    }
+  }, [selectedConversation])
+
+  const messagesQuery = useMessagesQuery(messageQueryParams)
 
   const messages = useMemo(() => messagesQuery.data?.data ?? [], [messagesQuery.data])
 
