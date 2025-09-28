@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import {
@@ -28,12 +28,16 @@ export const useConversationsQuery = (params: ConversationQueryParams) =>
   })
 
 export const useMessagesQuery = (params: MessagesQueryParams) =>
-  useQuery({
+  useInfiniteQuery({
     queryKey: MESSAGING_QUERY_KEYS.messages(params),
-    queryFn: () => fetchMessages(params),
+    queryFn: ({ pageParam = 1 }) => fetchMessages({ ...params, page: pageParam }),
     enabled: Boolean(params.receiverId || params.groupId),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore && lastPage.pagination.page < lastPage.pagination.totalPages
+        ? lastPage.pagination.page + 1
+        : undefined,
     refetchInterval: 1000 * 15,
-    placeholderData: (previous) => previous,
   })
 
 export const useSendMessageMutation = () => {

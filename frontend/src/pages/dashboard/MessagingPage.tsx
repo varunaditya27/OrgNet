@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -95,6 +95,8 @@ const MessagingPage = () => {
   const typingByConversation = useMessagingStore((state) => state.typingByConversation)
   const markMessageSeenInStore = useMessagingStore((state) => state.markMessageSeen)
   const isMessageSeen = useMessagingStore((state) => state.isMessageSeen)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const previousScrollMetricsRef = useRef<{ height: number; top: number } | null>(null)
 
   const selectedConversationId = useMemo(
     () => getConversationIdentifier(selectedConversation, user?.id),
@@ -109,27 +111,85 @@ const MessagingPage = () => {
 
   const messageQueryParams = useMemo<MessagesQueryParams>(() => {
     if (!selectedConversation) {
-      return { page: 1, limit: 50 }
+      return { limit: 50 }
     }
 
     if (selectedConversation.isGroup) {
       return {
         groupId: selectedConversation.groupId ?? undefined,
-        page: 1,
         limit: 50,
       }
     }
 
     return {
       receiverId: selectedConversation.participantId ?? undefined,
-      page: 1,
       limit: 50,
     }
   }, [selectedConversation])
 
   const messagesQuery = useMessagesQuery(messageQueryParams)
+  const { hasNextPage, isFetchingNextPage, fetchNextPage, data: paginatedMessages } =
+    messagesQuery
 
-  const messages = useMemo(() => messagesQuery.data?.data ?? [], [messagesQuery.data])
+  const messages = useMemo(() => {
+    const pages = paginatedMessages?.pages ?? []
+    const combined = pages.flatMap((page) => page.data)
+    return combined.sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+    )
+  }, [paginatedMessages])
+
+  const isInitialLoading = messagesQuery.isPending
+
+  const loadOlderMessages = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container || !hasNextPage || isFetchingNextPage) {
+      return
+    }
+
+    previousScrollMetricsRef.current = {
+      height: container.scrollHeight,
+      top: container.scrollTop,
+    }
+
+    void fetchNextPage()
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage])
+
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const handleScroll = () => {
+      if (container.scrollTop <= 120 && container.scrollHeight > container.clientHeight) {
+        loadOlderMessages()
+      }
+    }
+
+    container.addEventListener('scroll', handleScroll)
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [loadOlderMessages])
+
+  useEffect(() => {
+    if (isFetchingNextPage) {
+      return
+    }
+
+    const container = scrollContainerRef.current
+    if (!container || !previousScrollMetricsRef.current) {
+      return
+    }
+
+    const { height, top } = previousScrollMetricsRef.current
+    const heightDiff = container.scrollHeight - height
+    container.scrollTop = top + heightDiff
+    previousScrollMetricsRef.current = null
+  }, [isFetchingNextPage, paginatedMessages])
+
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    container.scrollTop = container.scrollHeight
+  }, [selectedConversationId])
 
   useEffect(() => {
     if (!isConnected) return
@@ -276,8 +336,11 @@ const MessagingPage = () => {
               />
             ) : (
               <>
-                <ScrollArea className="flex-1 rounded-md border bg-muted/30 p-4">
-                  {messagesQuery.isLoading ? (
+                <div
+                  ref={scrollContainerRef}
+                  className="flex-1 overflow-y-auto rounded-md border bg-muted/30 p-4"
+                >
+                  {isInitialLoading ? (
                     <div className="flex h-full items-center justify-center">
                       <Spinner />
                     </div>
@@ -288,12 +351,19 @@ const MessagingPage = () => {
                     />
                   ) : (
                     <div className="space-y-3">
+                      {hasNextPage ? (
+                        <div className="text-center text-xs text-muted-foreground">
+                          {isFetchingNextPage
+                            ? 'Loading previous messages…'
+                            : 'Scroll up for earlier history'}
+                        </div>
+                      ) : null}
                       {messages.map((message) => (
                         <MessageBubble key={message.id} message={message} currentUserId={user?.id} />
                       ))}
                     </div>
                   )}
-                </ScrollArea>
+                </div>
 
                 {typingEntries.length > 0 ? (
                   <TypingIndicator entries={typingEntries} conversation={selectedConversation} />
