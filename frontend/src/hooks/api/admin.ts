@@ -6,13 +6,17 @@ import {
   fetchAuditLogs,
   fetchSystemStats,
 } from '@/api/admin'
-import type { AuditLogQueryParams } from '@/api/admin'
+import type {
+  AdminTeamQueryParams,
+  AdminUserQueryParams,
+  AuditLogQueryParams,
+} from '@/api/admin'
 
 const ADMIN_QUERY_KEYS = {
   stats: ['admin', 'stats'] as const,
   auditLogs: (params: AuditLogQueryParams) => ['admin', 'audit-logs', params] as const,
-  users: ['admin', 'users'] as const,
-  teams: ['admin', 'teams'] as const,
+  users: (params: AdminUserQueryParams) => ['admin', 'users', params] as const,
+  teams: (params: AdminTeamQueryParams) => ['admin', 'teams', params] as const,
 }
 
 export const useSystemStatsQuery = () =>
@@ -29,16 +33,28 @@ export const useAuditLogsQuery = (params: AuditLogQueryParams) =>
     placeholderData: (previous) => previous,
   })
 
-export const useAdminUsersQuery = () =>
-  useQuery({
-    queryKey: ADMIN_QUERY_KEYS.users,
-    queryFn: fetchAllUsers,
-    staleTime: 1000 * 60 * 5,
-  })
+export const useAdminUsersQuery = (params?: AdminUserQueryParams) => {
+  const queryParams: AdminUserQueryParams = {
+    limit: 100,
+    ...params,
+  }
 
-export const useAdminTeamsQuery = () =>
-  useQuery({
-    queryKey: ADMIN_QUERY_KEYS.teams,
-    queryFn: fetchAllTeams,
+  return useQuery({
+    queryKey: ADMIN_QUERY_KEYS.users(queryParams),
+    queryFn: () => fetchAllUsers(queryParams),
     staleTime: 1000 * 60 * 5,
   })
+}
+
+export const useAdminTeamsQuery = (params?: AdminTeamQueryParams) => {
+  const queryParams: AdminTeamQueryParams = {
+    limit: 100,
+    ...params,
+  }
+
+  return useQuery({
+    queryKey: ADMIN_QUERY_KEYS.teams(queryParams),
+    queryFn: () => fetchAllTeams(queryParams),
+    staleTime: 1000 * 60 * 5,
+  })
+}

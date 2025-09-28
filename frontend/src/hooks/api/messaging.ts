@@ -31,7 +31,7 @@ export const useMessagesQuery = (params: MessagesQueryParams) =>
   useQuery({
     queryKey: MESSAGING_QUERY_KEYS.messages(params),
     queryFn: () => fetchMessages(params),
-    enabled: Boolean(params.conversationId),
+    enabled: Boolean(params.receiverId || params.groupId),
     refetchInterval: 1000 * 15,
     placeholderData: (previous) => previous,
   })
@@ -42,8 +42,8 @@ export const useSendMessageMutation = () => {
     mutationFn: (payload: SendMessagePayload) => sendMessage(payload),
     onSuccess: () => {
       toast.success('Message sent')
-  queryClient.invalidateQueries({ queryKey: ['messaging', 'messages'] })
-  queryClient.invalidateQueries({ queryKey: ['messaging', 'conversations'] })
+      queryClient.invalidateQueries({ queryKey: ['messaging', 'messages'] })
+      queryClient.invalidateQueries({ queryKey: ['messaging', 'conversations'] })
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   })
