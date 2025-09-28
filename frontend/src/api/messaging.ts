@@ -20,20 +20,59 @@ export const fetchConversations = async (params: ConversationQueryParams = {}) =
 }
 
 export interface MessagesQueryParams {
-  conversationId: number
+  receiverId?: number
+  groupId?: number
   page?: number
   limit?: number
 }
 
+interface PaginatedMessagesResponse {
+  messages: Message[]
+  total: number
+  page: number
+  limit: number
+  hasMore: boolean
+}
+
 export const fetchMessages = async (params: MessagesQueryParams) => {
-  const { conversationId, ...rest } = params
-  const { data } = await apiClient.get<PaginatedResponse<Message>>(
+  const { receiverId, groupId, page = 1, limit = 50 } = params
+
+  if (!receiverId && !groupId) {
+    throw new Error('Either receiverId or groupId must be provided')
+  }
+
+  const queryParams: Record<string, number> = {
+    page,
+    limit,
+  }
+
+  if (receiverId) {
+    queryParams.receiverId = receiverId
+  }
+
+  if (groupId) {
+    queryParams.groupId = groupId
+  }
+
+  const { data } = await apiClient.get<PaginatedMessagesResponse>(
     API_ENDPOINTS.messaging.messages,
     {
-      params: { conversationId, ...rest },
+      params: queryParams,
     },
   )
-  return data
+
+  const totalPages = data.limit > 0 ? Math.ceil(data.total / data.limit) : 0
+
+  return {
+    data: data.messages,
+    pagination: {
+      page: data.page,
+      limit: data.limit,
+      total: data.total,
+      totalPages,
+    },
+    hasMore: data.hasMore,
+  } satisfies PaginatedResponse<Message>
 }
 
 export interface SendMessagePayload {

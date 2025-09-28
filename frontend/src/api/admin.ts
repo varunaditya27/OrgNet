@@ -1,4 +1,5 @@
 import type { AuditLogEntry, PaginatedResponse, SystemStats, Team, User } from '@/types'
+import type { Role } from '@/utils/roles'
 import { apiClient } from './client'
 import { API_ENDPOINTS } from './endpoints'
 
@@ -23,12 +24,34 @@ export const fetchAuditLogs = async (params: AuditLogQueryParams = {}) => {
   return data
 }
 
-export const fetchAllUsers = async () => {
-  const { data } = await apiClient.get<User[]>(API_ENDPOINTS.admin.users)
+export interface AdminUserQueryParams {
+  page?: number
+  limit?: number
+  role?: Role
+  isActive?: boolean
+  search?: string
+  includeDeleted?: boolean
+}
+
+export const fetchAllUsers = async (params: AdminUserQueryParams = {}) => {
+  const { data } = await apiClient.get<PaginatedResponse<User>>(
+    API_ENDPOINTS.admin.users,
+    { params },
+  )
   return data
 }
 
-export const fetchAllTeams = async () => {
-  const { data } = await apiClient.get<Team[]>(API_ENDPOINTS.admin.teams)
+export interface AdminTeamQueryParams {
+  page?: number
+  limit?: number
+  search?: string
+  managerId?: number
+}
+
+export const fetchAllTeams = async (params: AdminTeamQueryParams = {}) => {
+  const { data } = await apiClient.get<PaginatedResponse<Team>>(
+    API_ENDPOINTS.admin.teams,
+    { params },
+  )
   return data
 }
