@@ -33,9 +33,9 @@ import {
 } from '@/components/ui/table'
 import { useAdminUsersQuery } from '@/hooks/api/admin'
 import {
-  useAddTeamMemberMutation,
+  useAddTeamMembersMutation,
   useCreateTeamMutation,
-  useRemoveTeamMemberMutation,
+  useRemoveTeamMembersMutation,
   useTeamsQuery,
 } from '@/hooks/api/teams'
 import type { Team, TeamMember, User } from '@/types'
@@ -46,7 +46,6 @@ type ManagerFilterValue = number | 'ALL'
 const teamFormSchema = z.object({
   name: z.string().min(2, 'Team name must be at least 2 characters'),
   description: z.string().max(160, 'Keep descriptions concise').optional(),
-  managerId: z.string().min(1, 'Select a manager'),
   memberIds: z.array(z.number()),
 })
 
@@ -270,7 +269,6 @@ const CreateTeamDialog = ({ open, onOpenChange, users, onCreated }: CreateTeamDi
     defaultValues: {
       name: '',
       description: '',
-      managerId: '',
       memberIds: [],
     },
   })
@@ -280,7 +278,6 @@ const CreateTeamDialog = ({ open, onOpenChange, users, onCreated }: CreateTeamDi
     await createMutation.mutateAsync({
       name: values.name,
       description: values.description,
-      managerId: Number.parseInt(values.managerId, 10),
       memberIds: values.memberIds,
     })
     form.reset()
@@ -323,31 +320,6 @@ const CreateTeamDialog = ({ open, onOpenChange, users, onCreated }: CreateTeamDi
                     <Input placeholder="Purpose or focus (optional)" {...field} />
                   </FormControl>
                   <FormDescription>Visible to all members.</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="managerId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Manager</FormLabel>
-                  <FormControl>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Assign a manager" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {users.map((user) => (
-                          <SelectItem key={user.id} value={String(user.id)}>
-                            {user.name} • {ROLE_LABELS[user.role]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -421,22 +393,22 @@ interface TeamDetailsDialogProps {
 }
 
 const TeamDetailsDialog = ({ team, users, onClose, onUpdated }: TeamDetailsDialogProps) => {
-  const addMember = useAddTeamMemberMutation(team.id)
-  const removeMember = useRemoveTeamMemberMutation(team.id)
+  const addMembers = useAddTeamMembersMutation(team.id)
+  const removeMembers = useRemoveTeamMembersMutation(team.id)
 
-  const [selectedMember, setSelectedMember] = useState<string>('')
+  const [selectedMembers, setSelectedMembers] = useState<number[]>([])
 
   const nonMembers = users.filter((user) => !team.members.some((member) => member.id === user.id))
 
-  const handleAddMember = async () => {
-    if (!selectedMember) return
-    await addMember.mutateAsync(Number.parseInt(selectedMember, 10))
-    setSelectedMember('')
+  const handleAddMembers = async () => {
+    if (selectedMembers.length === 0) return
+    await addMembers.mutateAsync({ memberIds: selectedMembers })
+    setSelectedMembers([])
     onUpdated()
   }
 
   const handleRemoveMember = async (member: TeamMember) => {
-    await removeMember.mutateAsync(member.id)
+    await removeMembers.mutateAsync({ memberIds: [member.id] })
     onUpdated()
   }
 
@@ -474,7 +446,7 @@ const TeamDetailsDialog = ({ team, users, onClose, onUpdated }: TeamDetailsDialo
                           size="sm"
                           className="text-destructive"
                           onClick={() => handleRemoveMember(member)}
-                          disabled={removeMember.isPending}
+                          disabled={removeMembers.isPending}
                         >
                           Remove
                         </Button>
@@ -489,27 +461,45 @@ const TeamDetailsDialog = ({ team, users, onClose, onUpdated }: TeamDetailsDialo
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-muted-foreground">Add member</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground">Add members</h3>
             {nonMembers.length === 0 ? (
               <p className="text-sm text-muted-foreground">Everyone in the directory already belongs to this team.</p>
             ) : (
-              <div className="flex gap-2">
-                <Select value={selectedMember} onValueChange={setSelectedMember}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Choose a collaborator" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {nonMembers.map((user) => (
-                      <SelectItem key={user.id} value={String(user.id)}>
-                        {user.name} • {ROLE_LABELS[user.role]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button onClick={handleAddMember} disabled={!selectedMember || addMember.isPending}>
-                  {addMember.isPending ? 'Adding…' : 'Add'}
+              <>
+                <ScrollArea className="max-h-48 rounded-md border p-3">
+                  <div className="space-y-2">
+                    {nonMembers.map((user) => {
+                      const checked = selectedMembers.includes(user.id)
+                      return (
+                        <label key={user.id} className="flex items-center gap-3 text-sm">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(isChecked) => {
+                              if (isChecked) {
+                                setSelectedMembers([...selectedMembers, user.id])
+                              } else {
+                                setSelectedMembers(selectedMembers.filter((id) => id !== user.id))
+                              }
+                            }}
+                          />
+                          <span className="flex-1">
+                            <span className="font-medium text-foreground">{user.name}</span>
+                            <span className="block text-xs text-muted-foreground">
+                              {user.email} • {ROLE_LABELS[user.role]}
+                            </span>
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </ScrollArea>
+                <Button 
+                  onClick={handleAddMembers} 
+                  disabled={selectedMembers.length === 0 || addMembers.isPending}
+                >
+                  {addMembers.isPending ? 'Adding…' : `Add ${selectedMembers.length} member${selectedMembers.length === 1 ? '' : 's'}`}
                 </Button>
-              </div>
+              </>
             )}
           </section>
         </div>
