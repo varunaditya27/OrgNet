@@ -73,6 +73,11 @@ export class UsersController {
     return this.usersService.findOne(req.user.id);
   }
 
+  @Get('messageable')
+  async getMessageableUsers(@Request() req: any): Promise<UserResponseDto[]> {
+    return this.usersService.getMessageableUsers(req.user.id);
+  }
+
   @Get(':id')
   @UseGuards(TreeBasedRBACGuard)
   @RequireHierarchyAccess([

@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 
 import {
   deactivateUser,
+  getMessageableUsers,
   listUsers,
   reactivateUser,
   updateUser,
@@ -14,6 +15,7 @@ import type { Role } from '@/utils/roles'
 const USERS_QUERY_KEYS = {
   list: (params: UserQueryParams) => ['users', params] as const,
   detail: (id: number | string) => ['users', id] as const,
+  messageable: ['users', 'messageable'] as const,
 }
 
 export const useUsersQuery = (params: UserQueryParams) => {
@@ -21,6 +23,13 @@ export const useUsersQuery = (params: UserQueryParams) => {
     queryKey: USERS_QUERY_KEYS.list(params),
     queryFn: () => listUsers(params),
     placeholderData: (previousData) => previousData,
+  })
+}
+
+export const useMessageableUsersQuery = () => {
+  return useQuery({
+    queryKey: USERS_QUERY_KEYS.messageable,
+    queryFn: () => getMessageableUsers(),
   })
 }
 

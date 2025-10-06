@@ -24,7 +24,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useUsersQuery } from '@/hooks/api/users'
+import { useMessageableUsersQuery } from '@/hooks/api/users'
 import { useSendMessageMutation, useCreateGroupMutation } from '@/hooks/api/messaging'
 import type { User } from '@/types'
 import { Badge } from '@/components/ui/badge'
@@ -56,11 +56,7 @@ export const NewConversationDialog = ({ onConversationCreated }: NewConversation
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [selectedMembers, setSelectedMembers] = useState<User[]>([])
 
-  const usersQuery = useUsersQuery({
-    page: 1,
-    limit: 100,
-    search: searchTerm || undefined,
-  })
+  const usersQuery = useMessageableUsersQuery()
 
   const sendMessageMutation = useSendMessageMutation()
   const createGroupMutation = useCreateGroupMutation()
@@ -83,7 +79,15 @@ export const NewConversationDialog = ({ onConversationCreated }: NewConversation
     },
   })
 
-  const users = usersQuery.data?.data ?? []
+  const users = usersQuery.data ?? []
+
+  // Filter users based on search term locally
+  const filteredUsers = searchTerm
+    ? users.filter(user =>
+        user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : users
 
   useEffect(() => {
     if (selectedUser) {
@@ -209,9 +213,9 @@ export const NewConversationDialog = ({ onConversationCreated }: NewConversation
                         </div>
                       )}
                     </CommandEmpty>
-                    {users.length > 0 && (
+                    {filteredUsers.length > 0 && (
                       <CommandGroup>
-                        {users.map((user) => (
+                        {filteredUsers.map((user) => (
                           <CommandItem
                             key={user.id}
                             value={`${user.name}-${user.email}`}
@@ -336,9 +340,9 @@ export const NewConversationDialog = ({ onConversationCreated }: NewConversation
                         </div>
                       )}
                     </CommandEmpty>
-                    {users.length > 0 && (
+                    {filteredUsers.length > 0 && (
                       <CommandGroup>
-                        {users.map((user) => (
+                        {filteredUsers.map((user) => (
                           <CommandItem
                             key={user.id}
                             value={`${user.name}-${user.email}`}

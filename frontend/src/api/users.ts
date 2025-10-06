@@ -26,6 +26,13 @@ export const getUserById = async (id: number | string) => {
   return data
 }
 
+export const getMessageableUsers = async () => {
+  const { data } = await apiClient.get<User[]>(
+    `${API_ENDPOINTS.users.base}/messageable`,
+  )
+  return data
+}
+
 export interface UpdateUserPayload {
   name?: string
   email?: string
