@@ -1,5 +1,8 @@
+<div align="center">
 
 # 🌐 OrgNet: Enterprise Collaboration Platform
+
+</div>
 
 OrgNet is a world-class, enterprise-grade collaboration suite for modern organizations. It unites a robust, RBAC-enforced backend (NestJS, PostgreSQL, Prisma) with a production-ready, real-time React frontend (Vite, Zustand, React Query, Tailwind CSS). OrgNet empowers teams with secure communication, dynamic team management, file sharing, and compliance—delivering a seamless, delightful experience for both users and developers.
 
