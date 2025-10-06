@@ -2,33 +2,20 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import {
-  activateUser,
-  changePassword,
   deactivateUser,
-  getAllUsersAdmin,
-  getUserById,
-  getUserHierarchy,
-  getUserSubordinates,
-  getUserSuperior,
-  getUserTeams,
+  getMessageableUsers,
   listUsers,
+  reactivateUser,
   updateUser,
 } from '@/api/users'
-import type {
-  ChangePasswordPayload,
-  UpdateUserPayload,
-  UserQueryParams,
-} from '@/api/users'
+import type { UpdateUserPayload, UserQueryParams } from '@/api/users'
 import { getErrorMessage } from '@/lib/utils'
+import type { Role } from '@/utils/roles'
 
 const USERS_QUERY_KEYS = {
   list: (params: UserQueryParams) => ['users', params] as const,
   detail: (id: number | string) => ['users', id] as const,
-  hierarchy: (id: number | string) => ['users', 'hierarchy', id] as const,
-  superior: (id: number | string) => ['users', 'superior', id] as const,
-  subordinates: (id: number | string) => ['users', 'subordinates', id] as const,
-  teams: (id: number | string) => ['users', 'teams', id] as const,
-  adminAll: ['users', 'admin', 'all'] as const,
+  messageable: ['users', 'messageable'] as const,
 }
 
 export const useUsersQuery = (params: UserQueryParams) => {
@@ -39,51 +26,10 @@ export const useUsersQuery = (params: UserQueryParams) => {
   })
 }
 
-export const useUserQuery = (id: number | string) => {
+export const useMessageableUsersQuery = () => {
   return useQuery({
-    queryKey: USERS_QUERY_KEYS.detail(id),
-    queryFn: () => getUserById(id),
-    enabled: Boolean(id),
-  })
-}
-
-export const useUserHierarchyQuery = (id: number | string) => {
-  return useQuery({
-    queryKey: USERS_QUERY_KEYS.hierarchy(id),
-    queryFn: () => getUserHierarchy(id),
-    enabled: Boolean(id),
-  })
-}
-
-export const useUserSuperiorQuery = (id: number | string) => {
-  return useQuery({
-    queryKey: USERS_QUERY_KEYS.superior(id),
-    queryFn: () => getUserSuperior(id),
-    enabled: Boolean(id),
-  })
-}
-
-export const useUserSubordinatesQuery = (id: number | string) => {
-  return useQuery({
-    queryKey: USERS_QUERY_KEYS.subordinates(id),
-    queryFn: () => getUserSubordinates(id),
-    enabled: Boolean(id),
-  })
-}
-
-export const useUserTeamsQuery = (id: number | string) => {
-  return useQuery({
-    queryKey: USERS_QUERY_KEYS.teams(id),
-    queryFn: () => getUserTeams(id),
-    enabled: Boolean(id),
-  })
-}
-
-export const useAdminUsersQuery = (includeInactive?: boolean) => {
-  return useQuery({
-    queryKey: USERS_QUERY_KEYS.adminAll,
-    queryFn: () => getAllUsersAdmin(includeInactive),
-    staleTime: 1000 * 60 * 5,
+    queryKey: USERS_QUERY_KEYS.messageable,
+    queryFn: () => getMessageableUsers(),
   })
 }
 
@@ -100,28 +46,6 @@ export const useUpdateUserMutation = (id: number | string) => {
   })
 }
 
-export const useChangePasswordMutation = (id: number | string) => {
-  return useMutation({
-    mutationFn: (payload: ChangePasswordPayload) => changePassword(id, payload),
-    onSuccess: (data) => {
-      toast.success(data.message)
-    },
-    onError: (error) => toast.error(getErrorMessage(error)),
-  })
-}
-
-export const useActivateUserMutation = () => {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (id: number | string) => activateUser(id),
-    onSuccess: (user) => {
-      toast.success(`${user.name} activated`)
-      queryClient.invalidateQueries({ queryKey: ['users'] })
-    },
-    onError: (error) => toast.error(getErrorMessage(error)),
-  })
-}
-
 export const useDeactivateUserMutation = () => {
   const queryClient = useQueryClient()
   return useMutation({
@@ -132,4 +56,20 @@ export const useDeactivateUserMutation = () => {
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   })
+}
+
+export const useReactivateUserMutation = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number | string) => reactivateUser(id),
+    onSuccess: (user) => {
+      toast.success(`${user.name} reactivated`)
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+}
+
+export const useFilteredUsers = (params: UserQueryParams & { roleFilter?: Role | 'ALL' }) => {
+  return useUsersQuery(params)
 }

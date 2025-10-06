@@ -79,7 +79,9 @@ const TeamsPage = () => {
 
   const teams = teamsQuery.data?.data ?? []
 
-  const managerOptions = Array.isArray(usersQuery.data) ? usersQuery.data : []
+  const managerOptions = (usersQuery.data?.data ?? []).filter((user) =>
+    ['ADMIN', 'MANAGER'].includes(user.role),
+  )
 
   return (
     <div className="space-y-8">

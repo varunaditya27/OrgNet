@@ -2,12 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { MessageSquare, Plus, Users } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import {
   Form,
@@ -22,9 +20,9 @@ import { PageHeader } from '@/components/ui/page-header'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
-import { Checkbox } from '@/components/ui/checkbox'
-import { useConversationsQuery, useMessagesQuery, useSendMessageMutation, useCreateGroupMutation, useGroupsQuery } from '@/hooks/api/messaging'
-import { useAdminUsersQuery } from '@/hooks/api/admin'
+import { NewConversationDialog } from '@/components/messaging/new-conversation-dialog'
+import { useConversationsQuery, useMessagesQuery, useSendMessageMutation } from '@/hooks/api/messaging'
+import type { MessagesQueryParams } from '@/api/messaging'
 import { useMessaging } from '@/hooks/useMessaging'
 import { useAuth } from '@/hooks/useAuth'
 import {
@@ -38,20 +36,13 @@ const messageSchema = z.object({
   content: z.string().min(1, 'Enter a message before sending'),
 })
 
-const groupSchema = z.object({
-  name: z.string().min(2, 'Group name must be at least 2 characters'),
-  description: z.string().optional(),
-  memberIds: z.array(z.number()).min(1, 'Select at least one member'),
-})
-
 type MessageFormValues = z.infer<typeof messageSchema>
-type GroupFormValues = z.infer<typeof groupSchema>
 
-const getConversationKey = (conversation: ConversationSummary): string => {
-  if (conversation.isGroup && conversation.groupId) {
-    return `group:${conversation.groupId}`
+const getConversationKey = (conversation: ConversationSummary): number | null => {
+  if (conversation.isGroup) {
+    return conversation.groupId ?? null
   }
-  return `direct:${conversation.participantId}`
+  return conversation.participantId ?? null
 }
 
 const getConversationIdentifier = (
@@ -59,8 +50,8 @@ const getConversationIdentifier = (
   currentUserId?: number,
 ): string | null => {
   if (!conversation) return null
-  if (conversation.isGroup && conversation.groupId) {
-    return `group:${conversation.groupId}`
+  if (conversation.isGroup) {
+    return conversation.groupId ? `group:${conversation.groupId}` : null
   }
   if (!currentUserId || !conversation.participantId) return null
   const sorted = [conversation.participantId, currentUserId].sort((a, b) => a - b)
@@ -76,51 +67,37 @@ const PRESENCE_COLOR: Record<PresenceStatus, string> = {
 const MessagingPage = () => {
   const { user } = useAuth()
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
-  const [createGroupOpen, setCreateGroupOpen] = useState(false)
+  const [selectedKey, setSelectedKey] = useState<number | null>(null)
 
   const conversationsQuery = useConversationsQuery({
     search: searchTerm || undefined,
   })
 
-  const groupsQuery = useGroupsQuery()
-  const usersQuery = useAdminUsersQuery()
-
-  // Combine direct conversations and groups
-  const allConversations = useMemo(() => {
-    const directConversations = conversationsQuery.data ?? []
-    const groups = groupsQuery.data ?? []
-    
-    const groupConversations: ConversationSummary[] = groups.map(group => ({
-      participantId: 0, // Not used for groups
-      participantName: group.name,
-      participantEmail: group.description || `${group.members.length} members`,
-      lastMessage: undefined, // Could be enhanced to show last group message
-      unreadCount: 0,
-      isGroup: true,
-      groupId: group.id,
-    }))
-
-    return [...directConversations, ...groupConversations]
-  }, [conversationsQuery.data, groupsQuery.data])
+  const conversations = useMemo(() => conversationsQuery.data ?? [], [conversationsQuery.data])
 
   const selectedConversation = useMemo(() => {
     if (!selectedKey) return null
-    return allConversations.find((conversation) => getConversationKey(conversation) === selectedKey) ?? null
-  }, [allConversations, selectedKey])
+    return conversations.find((conversation) => getConversationKey(conversation) === selectedKey) ?? null
+  }, [conversations, selectedKey])
 
   useEffect(() => {
-    if (!selectedConversation && allConversations.length > 0) {
-      const firstKey = getConversationKey(allConversations[0])
-      setSelectedKey(firstKey)
+    if (!selectedConversation && conversations.length > 0) {
+      const firstKey = conversations
+        .map(getConversationKey)
+        .find((key) => key !== null)
+      if (firstKey) {
+        setSelectedKey(firstKey)
+      }
     }
-  }, [allConversations, selectedConversation])
+  }, [conversations, selectedConversation])
 
   const { isConnected, markMessageRead, requestOnlineUsers } = useMessaging()
   const presenceByUser = useMessagingStore((state) => state.presenceByUser)
   const typingByConversation = useMessagingStore((state) => state.typingByConversation)
   const markMessageSeenInStore = useMessagingStore((state) => state.markMessageSeen)
   const isMessageSeen = useMessagingStore((state) => state.isMessageSeen)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const previousScrollMetricsRef = useRef<{ height: number; top: number } | null>(null)
 
   const selectedConversationId = useMemo(
     () => getConversationIdentifier(selectedConversation, user?.id),
@@ -133,22 +110,87 @@ const MessagingPage = () => {
     return entries ? Object.values(entries) : []
   }, [selectedConversationId, typingByConversation])
 
-  // Get messages for selected conversation
-  const messagesParams = useMemo(() => {
-    if (!selectedConversation) return { receiverId: 0 }
-    if (selectedConversation.isGroup && selectedConversation.groupId) {
-      return { groupId: selectedConversation.groupId }
+  const messageQueryParams = useMemo<MessagesQueryParams>(() => {
+    if (!selectedConversation) {
+      return { limit: 50 }
     }
-    return { receiverId: selectedConversation.participantId }
+
+    if (selectedConversation.isGroup) {
+      return {
+        groupId: selectedConversation.groupId ?? undefined,
+        limit: 50,
+      }
+    }
+
+    return {
+      receiverId: selectedConversation.participantId ?? undefined,
+      limit: 50,
+    }
   }, [selectedConversation])
 
-  const messagesQuery = useMessagesQuery({
-    ...messagesParams,
-    page: 1,
-    limit: 50,
-  })
+  const messagesQuery = useMessagesQuery(messageQueryParams)
+  const { hasNextPage, isFetchingNextPage, fetchNextPage, data: paginatedMessages } =
+    messagesQuery
 
-  const messages = useMemo(() => messagesQuery.data?.messages ?? [], [messagesQuery.data])
+  const messages = useMemo(() => {
+    const pages = paginatedMessages?.pages ?? []
+    const combined = pages.flatMap((page) => page.data)
+    return combined.sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+    )
+  }, [paginatedMessages])
+
+  const isInitialLoading = messagesQuery.isPending
+
+  const loadOlderMessages = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container || !hasNextPage || isFetchingNextPage) {
+      return
+    }
+
+    previousScrollMetricsRef.current = {
+      height: container.scrollHeight,
+      top: container.scrollTop,
+    }
+
+    void fetchNextPage()
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage])
+
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const handleScroll = () => {
+      if (container.scrollTop <= 120 && container.scrollHeight > container.clientHeight) {
+        loadOlderMessages()
+      }
+    }
+
+    container.addEventListener('scroll', handleScroll)
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [loadOlderMessages])
+
+  useEffect(() => {
+    if (isFetchingNextPage) {
+      return
+    }
+
+    const container = scrollContainerRef.current
+    if (!container || !previousScrollMetricsRef.current) {
+      return
+    }
+
+    const { height, top } = previousScrollMetricsRef.current
+    const heightDiff = container.scrollHeight - height
+    container.scrollTop = top + heightDiff
+    previousScrollMetricsRef.current = null
+  }, [isFetchingNextPage, paginatedMessages])
+
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    container.scrollTop = container.scrollHeight
+  }, [selectedConversationId])
 
   useEffect(() => {
     if (!isConnected) return
@@ -184,6 +226,31 @@ const MessagingPage = () => {
     setSearchTerm(value)
   }
 
+  const handleConversationCreated = useCallback((receiverId?: number, groupId?: number) => {
+    // Refetch conversations to include the new one
+    void conversationsQuery.refetch()
+
+    // Find and select the new conversation
+    setTimeout(() => {
+      const newConversation = conversations.find(conv => {
+        if (groupId) {
+          return conv.isGroup && conv.groupId === groupId
+        }
+        if (receiverId) {
+          return !conv.isGroup && conv.participantId === receiverId
+        }
+        return false
+      })
+
+      if (newConversation) {
+        const key = getConversationKey(newConversation)
+        if (key) {
+          setSelectedKey(key)
+        }
+      }
+    }, 500) // Small delay to allow the conversation list to update
+  }, [conversations, conversationsQuery])
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -194,21 +261,12 @@ const MessagingPage = () => {
             <ConnectionStatusBadge connected={isConnected} />
             <Button
               variant="outline"
-              onClick={() => setCreateGroupOpen(true)}
+              onClick={() => conversationsQuery.refetch()}
+              disabled={conversationsQuery.isFetching}
             >
-              <Plus className="mr-2 h-4 w-4" />
-              Create group
+              {conversationsQuery.isFetching ? 'Refreshing…' : 'Refresh list'}
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                conversationsQuery.refetch()
-                groupsQuery.refetch()
-              }}
-              disabled={conversationsQuery.isFetching || groupsQuery.isFetching}
-            >
-              {conversationsQuery.isFetching || groupsQuery.isFetching ? 'Refreshing…' : 'Refresh'}
-            </Button>
+            <NewConversationDialog onConversationCreated={handleConversationCreated} />
           </div>
         }
       />
@@ -231,25 +289,20 @@ const MessagingPage = () => {
             </form>
 
             <ScrollArea className="h-[55vh] max-h-[500px] pr-4">
-              {conversationsQuery.isLoading || groupsQuery.isLoading ? (
+              {conversationsQuery.isLoading ? (
                 <div className="flex h-32 items-center justify-center">
                   <Spinner />
                 </div>
-              ) : allConversations.length === 0 ? (
+              ) : conversations.length === 0 ? (
                 <EmptyState
                   title="No conversations yet"
-                  description="Start a new conversation by creating a group or messaging a teammate."
-                  action={
-                    <Button variant="outline" onClick={() => setCreateGroupOpen(true)}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Create group
-                    </Button>
-                  }
+                  description="Start a new conversation by selecting a teammate from the directory."
                 />
               ) : (
                 <ul className="space-y-2">
-                  {allConversations.map((conversation) => {
+                  {conversations.map((conversation) => {
                     const key = getConversationKey(conversation)
+                    if (!key) return null
                     const isActive = selectedKey === key
                     const presenceStatus: PresenceStatus | undefined = !conversation.isGroup
                       ? presenceByUser[conversation.participantId]?.status ?? 'offline'
@@ -266,7 +319,7 @@ const MessagingPage = () => {
                               {!conversation.isGroup ? (
                                 <PresenceDot status={presenceStatus} />
                               ) : (
-                                <Users className="mt-1 h-4 w-4 text-primary/60" />
+                                <span className="mt-1 h-2 w-2 rounded-full bg-primary/40" />
                               )}
                               <div>
                                 <p className="text-sm font-semibold text-foreground">
@@ -281,9 +334,11 @@ const MessagingPage = () => {
                               <Badge variant="info">{conversation.unreadCount}</Badge>
                             ) : null}
                           </div>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {conversation.isGroup ? 'Group channel' : conversation.participantEmail}
-                          </p>
+                          {conversation.isGroup ? (
+                            <p className="mt-1 text-xs text-muted-foreground">Group channel</p>
+                          ) : (
+                            <p className="mt-1 text-xs text-muted-foreground">{conversation.participantEmail}</p>
+                          )}
                         </button>
                       </li>
                     )
@@ -296,12 +351,7 @@ const MessagingPage = () => {
 
         <Card className="lg:h-[calc(100vh-220px)]">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              {selectedConversation?.isGroup ? (
-                <Users className="h-5 w-5" />
-              ) : (
-                <MessageSquare className="h-5 w-5" />
-              )}
+            <CardTitle>
               {selectedConversation?.participantName ?? 'Select a conversation'}
             </CardTitle>
           </CardHeader>
@@ -313,8 +363,11 @@ const MessagingPage = () => {
               />
             ) : (
               <>
-                <ScrollArea className="flex-1 rounded-md border bg-muted/30 p-4">
-                  {messagesQuery.isLoading ? (
+                <div
+                  ref={scrollContainerRef}
+                  className="flex-1 overflow-y-auto rounded-md border bg-muted/30 p-4"
+                >
+                  {isInitialLoading ? (
                     <div className="flex h-full items-center justify-center">
                       <Spinner />
                     </div>
@@ -325,12 +378,19 @@ const MessagingPage = () => {
                     />
                   ) : (
                     <div className="space-y-3">
+                      {hasNextPage ? (
+                        <div className="text-center text-xs text-muted-foreground">
+                          {isFetchingNextPage
+                            ? 'Loading previous messages…'
+                            : 'Scroll up for earlier history'}
+                        </div>
+                      ) : null}
                       {messages.map((message) => (
                         <MessageBubble key={message.id} message={message} currentUserId={user?.id} />
                       ))}
                     </div>
                   )}
-                </ScrollArea>
+                </div>
 
                 {typingEntries.length > 0 ? (
                   <TypingIndicator entries={typingEntries} conversation={selectedConversation} />
@@ -345,27 +405,13 @@ const MessagingPage = () => {
 
                 <MessageComposer
                   conversation={selectedConversation}
-                  onMessageSent={() => {
-                    messagesQuery.refetch()
-                    conversationsQuery.refetch()
-                  }}
+                  onMessageSent={() => messagesQuery.refetch()}
                 />
               </>
             )}
           </CardContent>
         </Card>
       </div>
-
-      <CreateGroupDialog
-        open={createGroupOpen}
-        onOpenChange={setCreateGroupOpen}
-        users={usersQuery.data ?? []}
-        onCreated={() => {
-          setCreateGroupOpen(false)
-          groupsQuery.refetch()
-          conversationsQuery.refetch()
-        }}
-      />
     </div>
   )
 }
@@ -453,12 +499,11 @@ const MessageComposer = ({ conversation, onMessageSent }: MessageComposerProps) 
   const sendMutation = useSendMessageMutation()
   const [isRealtimeSending, setIsRealtimeSending] = useState(false)
   const [hasNotifiedTyping, setHasNotifiedTyping] = useState(false)
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const typingTarget = useMemo(() => {
     if (!conversation) return null
-    if (conversation.isGroup && conversation.groupId) {
-      return { groupId: conversation.groupId }
+    if (conversation.isGroup) {
+      return conversation.groupId ? { groupId: conversation.groupId } : null
     }
     return conversation.participantId ? { receiverId: conversation.participantId } : null
   }, [conversation])
@@ -482,23 +527,9 @@ const MessageComposer = ({ conversation, onMessageSent }: MessageComposerProps) 
       setHasNotifiedTyping(false)
     }
 
-    // Clear typing indicator after 3 seconds of no typing
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current)
-    }
-
-    if (contentValue && hasNotifiedTyping) {
-      typingTimeoutRef.current = setTimeout(() => {
-        if (typingTarget) {
-          stopTyping(typingTarget)
-          setHasNotifiedTyping(false)
-        }
-      }, 3000)
-    }
-
     return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current)
+      if (hasNotifiedTyping && typingTarget) {
+        stopTyping(typingTarget)
       }
     }
   }, [contentValue, hasNotifiedTyping, isConnected, startTyping, stopTyping, typingTarget])
@@ -507,7 +538,8 @@ const MessageComposer = ({ conversation, onMessageSent }: MessageComposerProps) 
     const payload: { content: string; receiverId?: number; groupId?: number } = {
       content: values.content,
     }
-    if (conversation.isGroup && conversation.groupId) {
+    if (conversation.isGroup) {
+      if (!conversation.groupId) return
       payload.groupId = conversation.groupId
     } else {
       payload.receiverId = conversation.participantId
@@ -581,128 +613,5 @@ const MessageComposer = ({ conversation, onMessageSent }: MessageComposerProps) 
         </div>
       </form>
     </Form>
-  )
-}
-
-interface CreateGroupDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  users: Array<{ id: number; name: string; email: string; role: string }>
-  onCreated: () => void
-}
-
-const CreateGroupDialog = ({ open, onOpenChange, users, onCreated }: CreateGroupDialogProps) => {
-  const form = useForm<GroupFormValues>({
-    resolver: zodResolver(groupSchema),
-    defaultValues: {
-      name: '',
-      description: '',
-      memberIds: [],
-    },
-  })
-  const createMutation = useCreateGroupMutation()
-
-  const onSubmit = async (values: GroupFormValues) => {
-    await createMutation.mutateAsync(values)
-    form.reset()
-    onCreated()
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Create group</DialogTitle>
-          <DialogDescription>
-            Start a secure group conversation with your teammates.
-          </DialogDescription>
-        </DialogHeader>
-
-        <Form {...form}>
-          <form className="space-y-5" onSubmit={form.handleSubmit(onSubmit)}>
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Group name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Project Alpha Team" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description (optional)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Purpose or context" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="memberIds"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Members</FormLabel>
-                  <FormControl>
-                    <ScrollArea className="max-h-48 rounded-md border p-3">
-                      <div className="space-y-2">
-                        {users.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">No users available.</p>
-                        ) : (
-                          users.map((user) => {
-                            const checked = field.value.includes(user.id)
-                            return (
-                              <label key={user.id} className="flex items-center gap-3 text-sm">
-                                <Checkbox
-                                  checked={checked}
-                                  onCheckedChange={(isChecked) => {
-                                    if (isChecked) {
-                                      field.onChange([...field.value, user.id])
-                                    } else {
-                                      field.onChange(field.value.filter((id) => id !== user.id))
-                                    }
-                                  }}
-                                />
-                                <span className="flex-1">
-                                  <span className="font-medium text-foreground">{user.name}</span>
-                                  <span className="block text-xs text-muted-foreground">
-                                    {user.email}
-                                  </span>
-                                </span>
-                              </label>
-                            )
-                          })
-                        )}
-                      </div>
-                    </ScrollArea>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <DialogFooter className="pt-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending ? 'Creating…' : 'Create group'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
   )
 }

@@ -394,6 +394,114 @@ export class UsersService {
     return false;
   }
 
+  /**
+   * Get users that the current user can message based on RBAC rules
+   * - ADMIN: Can message anyone
+   * - MANAGER: Can message subordinates, immediate superior, and peers (same parent)
+   * - EMPLOYEE: Can message immediate superior and peers (same parent)
+   * - INTERN: Can message immediate superior and peers (same parent)
+   */
+  async getMessageableUsers(currentUserId: number): Promise<UserResponseDto[]> {
+    const currentUser = await this.prisma.user.findUnique({
+      where: { id: currentUserId },
+      select: {
+        id: true,
+        role: true,
+        parentId: true,
+      },
+    });
+
+    if (!currentUser) {
+      throw new NotFoundException('Current user not found');
+    }
+
+    let messageableUserIds: number[] = [];
+
+    if (currentUser.role === Role.ADMIN) {
+      // Admins can message everyone
+      const allUsers = await this.prisma.user.findMany({
+        where: {
+          id: { not: currentUserId },
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      messageableUserIds = allUsers.map(u => u.id);
+    } else if (currentUser.role === Role.MANAGER) {
+      // Managers can message:
+      // 1. All subordinates (direct and indirect)
+      const subordinates = await this.prisma.$queryRaw<{ id: number }[]>`
+        WITH RECURSIVE subordinate_tree AS (
+          SELECT id, "parentId" FROM "User" WHERE "parentId" = ${currentUserId}
+          UNION ALL
+          SELECT u.id, u."parentId"
+          FROM "User" u
+          INNER JOIN subordinate_tree st ON u."parentId" = st.id
+        )
+        SELECT id FROM subordinate_tree
+      `;
+      
+      // 2. Immediate superior
+      if (currentUser.parentId) {
+        messageableUserIds.push(currentUser.parentId);
+      }
+      
+      // 3. Peers (same parent)
+      if (currentUser.parentId) {
+        const peers = await this.prisma.user.findMany({
+          where: {
+            parentId: currentUser.parentId,
+            id: { not: currentUserId },
+            isActive: true,
+          },
+          select: { id: true },
+        });
+        messageableUserIds.push(...peers.map(p => p.id));
+      }
+      
+      messageableUserIds.push(...subordinates.map(s => s.id));
+    } else {
+      // EMPLOYEE and INTERN can message:
+      // 1. Immediate superior
+      if (currentUser.parentId) {
+        messageableUserIds.push(currentUser.parentId);
+      }
+      
+      // 2. Peers (same parent)
+      if (currentUser.parentId) {
+        const peers = await this.prisma.user.findMany({
+          where: {
+            parentId: currentUser.parentId,
+            id: { not: currentUserId },
+            isActive: true,
+          },
+          select: { id: true },
+        });
+        messageableUserIds.push(...peers.map(p => p.id));
+      }
+    }
+
+    // Remove duplicates and fetch full user details
+    const uniqueUserIds = [...new Set(messageableUserIds)];
+    
+    if (uniqueUserIds.length === 0) {
+      return [];
+    }
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        id: { in: uniqueUserIds },
+        isActive: true,
+      },
+      orderBy: [
+        { role: 'asc' },
+        { name: 'asc' },
+      ],
+    });
+
+    return users.map(user => this.mapToUserResponse(user));
+  }
+
   private mapToUserResponse(user: any): UserResponseDto {
     return {
       id: user.id,

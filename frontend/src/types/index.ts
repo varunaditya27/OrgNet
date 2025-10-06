@@ -51,6 +51,15 @@ export interface Message {
   } | null
 }
 
+export interface Group {
+  id: number
+  name: string
+  description?: string | null
+  createdAt: string
+  updatedAt: string
+  members?: UserSummary[]
+}
+
 export interface ConversationSummary {
   participantId: number
   participantName: string
@@ -102,6 +111,7 @@ export interface PaginatedResponse<T> {
     total: number
     totalPages: number
   }
+  hasMore?: boolean
 }
 
 export interface SystemStats {
