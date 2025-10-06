@@ -20,6 +20,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
+import { NewConversationDialog } from '@/components/messaging/new-conversation-dialog'
 import { useConversationsQuery, useMessagesQuery, useSendMessageMutation } from '@/hooks/api/messaging'
 import type { MessagesQueryParams } from '@/api/messaging'
 import { useMessaging } from '@/hooks/useMessaging'
@@ -225,6 +226,31 @@ const MessagingPage = () => {
     setSearchTerm(value)
   }
 
+  const handleConversationCreated = useCallback((receiverId?: number, groupId?: number) => {
+    // Refetch conversations to include the new one
+    void conversationsQuery.refetch()
+
+    // Find and select the new conversation
+    setTimeout(() => {
+      const newConversation = conversations.find(conv => {
+        if (groupId) {
+          return conv.isGroup && conv.groupId === groupId
+        }
+        if (receiverId) {
+          return !conv.isGroup && conv.participantId === receiverId
+        }
+        return false
+      })
+
+      if (newConversation) {
+        const key = getConversationKey(newConversation)
+        if (key) {
+          setSelectedKey(key)
+        }
+      }
+    }, 500) // Small delay to allow the conversation list to update
+  }, [conversations, conversationsQuery])
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -240,6 +266,7 @@ const MessagingPage = () => {
             >
               {conversationsQuery.isFetching ? 'Refreshing…' : 'Refresh list'}
             </Button>
+            <NewConversationDialog onConversationCreated={handleConversationCreated} />
           </div>
         }
       />

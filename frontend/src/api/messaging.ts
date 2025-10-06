@@ -1,5 +1,6 @@
 import type {
   ConversationSummary,
+  Group,
   Message,
   PaginatedResponse,
   UserSummary,
@@ -96,7 +97,7 @@ export interface CreateGroupPayload {
 }
 
 export const createGroup = async (payload: CreateGroupPayload) => {
-  const { data } = await apiClient.post(
+  const { data } = await apiClient.post<Group>(
     API_ENDPOINTS.messaging.groups,
     payload,
   )
