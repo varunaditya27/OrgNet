@@ -118,8 +118,8 @@ $ npm install
 ### 3. Database & Prisma
 ```bash
 # In backend/
-$ npx prisma generate --schema=../database/schema.prisma
-$ npx prisma migrate dev --schema=../database/schema.prisma
+$ npx prisma generate
+$ npx prisma migrate dev
 ```
 
 ### 4. Run Development Servers
