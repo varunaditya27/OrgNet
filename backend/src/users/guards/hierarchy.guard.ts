@@ -1,13 +1,19 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Role } from '../../common/enums';
+import type { AuthenticatedRequest } from '../../common/types';
 
 @Injectable()
 export class HierarchyGuard implements CanActivate {
   constructor(private readonly prisma: PrismaService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const user = request.user; // From JWT guard
     const targetUserId = parseInt(request.params.id);
 
@@ -39,6 +45,8 @@ export class HierarchyGuard implements CanActivate {
       return true;
     }
 
-    throw new ForbiddenException('Access denied: insufficient hierarchy permissions');
+    throw new ForbiddenException(
+      'Access denied: insufficient hierarchy permissions',
+    );
   }
 }

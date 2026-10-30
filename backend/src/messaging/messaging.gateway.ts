@@ -14,6 +14,9 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { MessagingService } from './messaging.service';
 import { Role } from '../common/enums';
+import type { HierarchyUser } from '../common/types';
+import type { JwtPayload } from '../auth/strategies/jwt.strategy';
+import type { MessageResponseDto } from './dto';
 
 interface AuthenticatedSocket extends Socket {
   user?: {
@@ -40,12 +43,14 @@ interface TypingIndicator {
 
 @WebSocketGateway({
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3001',
+    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
     credentials: true,
   },
   namespace: '/messaging',
 })
-export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
+export class MessagingGateway
+  implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
+{
   @WebSocketServer()
   server: Server;
 
@@ -60,7 +65,7 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
     private messagingService: MessagingService,
   ) {}
 
-  afterInit(server: Server) {
+  afterInit() {
     this.logger.log('WebSocket Gateway initialized');
   }
 
@@ -72,10 +77,16 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
         return;
       }
 
-      const payload = this.jwtService.verify(token);
+      const payload = this.jwtService.verify<JwtPayload>(token);
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
-        select: { id: true, email: true, role: true, parentId: true, isActive: true },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          parentId: true,
+          isActive: true,
+        },
       });
 
       if (!user || !user.isActive) {
@@ -86,11 +97,11 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
       client.user = {
         id: user.id,
         email: user.email,
-        role: user.role as Role,
+        role: user.role,
         parentId: user.parentId || undefined,
       };
       this.socketToUser.set(client.id, user.id);
-      
+
       // Update user presence
       const presence: UserPresence = {
         userId: user.id,
@@ -135,7 +146,8 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
   @SubscribeMessage('send_message')
   async handleSendMessage(
     @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() data: { content: string; receiverId?: number; groupId?: number },
+    @MessageBody()
+    data: { content: string; receiverId?: number; groupId?: number },
   ) {
     if (!client.user) {
       client.emit('error', { message: 'Not authenticated' });
@@ -167,7 +179,7 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
       // Broadcast message to appropriate recipients
       if (data.receiverId) {
         // Direct message
-        await this.broadcastDirectMessage(message, client.user.id, data.receiverId);
+        this.broadcastDirectMessage(message, client.user.id, data.receiverId);
       } else if (data.groupId) {
         // Group message
         await this.broadcastGroupMessage(message, data.groupId);
@@ -179,7 +191,6 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
         timestamp: message.timestamp,
         status: 'delivered',
       });
-
     } catch (error) {
       this.logger.error('Error sending message:', error);
       client.emit('error', { message: 'Failed to send message' });
@@ -187,13 +198,13 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   @SubscribeMessage('typing_start')
-  async handleTypingStart(
+  handleTypingStart(
     @ConnectedSocket() client: AuthenticatedSocket,
     @MessageBody() data: { receiverId?: number; groupId?: number },
   ) {
     if (!client.user) return;
 
-    const conversationId = data.receiverId 
+    const conversationId = data.receiverId
       ? `direct:${Math.min(client.user.id, data.receiverId)}:${Math.max(client.user.id, data.receiverId)}`
       : `group:${data.groupId}`;
 
@@ -204,27 +215,34 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
       timestamp: new Date(),
     };
 
-    this.typingIndicators.set(`${client.user.id}:${conversationId}`, typingIndicator);
+    this.typingIndicators.set(
+      `${client.user.id}:${conversationId}`,
+      typingIndicator,
+    );
 
     // Broadcast typing indicator to conversation participants
-    await this.broadcastTypingIndicator(typingIndicator, data.receiverId, data.groupId);
+    this.broadcastTypingIndicator(
+      typingIndicator,
+      data.receiverId,
+      data.groupId,
+    );
   }
 
   @SubscribeMessage('typing_stop')
-  async handleTypingStop(
+  handleTypingStop(
     @ConnectedSocket() client: AuthenticatedSocket,
     @MessageBody() data: { receiverId?: number; groupId?: number },
   ) {
     if (!client.user) return;
 
-    const conversationId = data.receiverId 
+    const conversationId = data.receiverId
       ? `direct:${Math.min(client.user.id, data.receiverId)}:${Math.max(client.user.id, data.receiverId)}`
       : `group:${data.groupId}`;
 
     this.typingIndicators.delete(`${client.user.id}:${conversationId}`);
 
     // Broadcast typing stop to conversation participants
-    await this.broadcastTypingIndicator(
+    this.broadcastTypingIndicator(
       {
         userId: client.user.id,
         conversationId,
@@ -264,11 +282,15 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
       }
 
       // Check if user is authorized to mark this message as read
-      const canRead = message.receiverId === client.user!.id || 
-                     message.group?.members.some(member => member.id === client.user!.id);
+      const readerId = client.user.id;
+      const canRead =
+        message.receiverId === readerId ||
+        message.group?.members.some((member) => member.id === readerId);
 
       if (!canRead) {
-        client.emit('error', { message: 'Not authorized to read this message' });
+        client.emit('error', {
+          message: 'Not authorized to read this message',
+        });
         return;
       }
 
@@ -281,7 +303,6 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
           readAt: new Date(),
         });
       }
-
     } catch (error) {
       this.logger.error('Error marking message as read:', error);
       client.emit('error', { message: 'Failed to mark message as read' });
@@ -296,8 +317,8 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
       // Get users that the current user can communicate with
       const authorizedUsers = await this.getAuthorizedUsers(client.user);
       const onlineUsers = Array.from(this.userPresence.values())
-        .filter(presence => authorizedUsers.includes(presence.userId))
-        .map(presence => ({
+        .filter((presence) => authorizedUsers.includes(presence.userId))
+        .map((presence) => ({
           userId: presence.userId,
           status: presence.status,
           lastSeen: presence.lastSeen,
@@ -312,31 +333,45 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
   // Private helper methods
 
   private extractTokenFromSocket(client: Socket): string | null {
-    const token = client.handshake.auth?.token || 
-                 client.handshake.headers?.authorization?.replace('Bearer ', '');
-    return token || null;
+    const authToken = (client.handshake.auth as { token?: string }).token;
+    const headerToken = client.handshake.headers.authorization?.replace(
+      'Bearer ',
+      '',
+    );
+    return authToken || headerToken || null;
   }
 
   private async joinUserConversations(client: AuthenticatedSocket) {
     if (!client.user) return;
 
     // Join direct conversation rooms
-    const conversations = await this.messagingService.getConversations(client.user.id);
+    const conversations = await this.messagingService.getConversations(
+      client.user.id,
+    );
     for (const conversation of conversations) {
       const roomName = `direct:${Math.min(client.user.id, conversation.participantId)}:${Math.max(client.user.id, conversation.participantId)}`;
-      client.join(roomName);
+      void client.join(roomName);
     }
 
     // Join group conversation rooms
     const groups = await this.messagingService.getUserGroups(client.user.id);
     for (const group of groups) {
-      client.join(`group:${group.id}`);
+      void client.join(`group:${group.id}`);
     }
   }
 
-  private async broadcastDirectMessage(message: any, senderId: number, receiverId: number) {
+  private broadcastDirectMessage(
+    message: MessageResponseDto,
+    senderId: number,
+    receiverId: number,
+  ) {
     const roomName = `direct:${Math.min(senderId, receiverId)}:${Math.max(senderId, receiverId)}`;
-    
+
+    // Rooms are only joined on connect, so a first-time conversation has no members yet.
+    this.server
+      .in([`user:${senderId}`, `user:${receiverId}`])
+      .socketsJoin(roomName);
+
     this.server.to(roomName).emit('new_message', {
       id: message.id,
       content: message.content,
@@ -347,7 +382,19 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
     });
   }
 
-  private async broadcastGroupMessage(message: any, groupId: number) {
+  private async broadcastGroupMessage(
+    message: MessageResponseDto,
+    groupId: number,
+  ) {
+    // Sockets connected before the group existed (or before they were added) are not in its room yet.
+    const group = await this.prisma.group.findUnique({
+      where: { id: groupId },
+      select: { members: { select: { id: true } } },
+    });
+    const memberRooms =
+      group?.members.map((member) => `user:${member.id}`) ?? [];
+    this.server.in(memberRooms).socketsJoin(`group:${groupId}`);
+
     this.server.to(`group:${groupId}`).emit('new_message', {
       id: message.id,
       content: message.content,
@@ -359,7 +406,10 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
     });
   }
 
-  private async broadcastPresenceUpdate(userId: number, status: 'online' | 'offline') {
+  private async broadcastPresenceUpdate(
+    userId: number,
+    status: 'online' | 'offline',
+  ) {
     try {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
@@ -386,7 +436,7 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
     }
   }
 
-  private async broadcastTypingIndicator(
+  private broadcastTypingIndicator(
     indicator: TypingIndicator,
     receiverId?: number,
     groupId?: number,
@@ -412,20 +462,25 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   private cleanupTypingIndicators(userId: number) {
-    const keysToDelete = Array.from(this.typingIndicators.keys())
-      .filter(key => key.startsWith(`${userId}:`));
-    
-    keysToDelete.forEach(key => this.typingIndicators.delete(key));
+    const keysToDelete = Array.from(this.typingIndicators.keys()).filter(
+      (key) => key.startsWith(`${userId}:`),
+    );
+
+    keysToDelete.forEach((key) => this.typingIndicators.delete(key));
   }
 
-  private async getAuthorizedUsers(currentUser: any): Promise<number[]> {
+  private async getAuthorizedUsers(
+    currentUser: Pick<HierarchyUser, 'id' | 'role'> & {
+      parentId?: number | null;
+    },
+  ): Promise<number[]> {
     // This uses the same logic as the communication guard
     if (currentUser.role === Role.ADMIN) {
       const allUsers = await this.prisma.user.findMany({
         where: { isActive: true },
         select: { id: true },
       });
-      return allUsers.map(u => u.id);
+      return allUsers.map((u) => u.id);
     }
 
     const authorizedUsers: Set<number> = new Set();
@@ -439,7 +494,7 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
         where: { parentId: currentUser.id, isActive: true },
         select: { id: true },
       });
-      subordinates.forEach(u => authorizedUsers.add(u.id));
+      subordinates.forEach((u) => authorizedUsers.add(u.id));
     }
 
     // Add immediate superior
@@ -453,13 +508,15 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
         where: { parentId: currentUser.parentId, isActive: true },
         select: { id: true },
       });
-      peers.forEach(u => authorizedUsers.add(u.id));
+      peers.forEach((u) => authorizedUsers.add(u.id));
     }
 
     return Array.from(authorizedUsers);
   }
 
-  private async getUsersWhoCanSeePresence(user: any): Promise<number[]> {
+  private async getUsersWhoCanSeePresence(
+    user: HierarchyUser,
+  ): Promise<number[]> {
     // Use the same logic as getAuthorizedUsers but in reverse
     // Users who can see this user's presence are those who can communicate with them
     const viewers: Set<number> = new Set();
@@ -472,7 +529,7 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
       where: { role: Role.ADMIN, isActive: true },
       select: { id: true },
     });
-    admins.forEach(admin => viewers.add(admin.id));
+    admins.forEach((admin) => viewers.add(admin.id));
 
     // Direct superior can see subordinate's presence
     if (user.parentId) {
@@ -485,7 +542,7 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
         where: { parentId: user.id, isActive: true },
         select: { id: true },
       });
-      subordinates.forEach(sub => viewers.add(sub.id));
+      subordinates.forEach((sub) => viewers.add(sub.id));
     }
 
     // Peers can see each other's presence
@@ -494,7 +551,7 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
         where: { parentId: user.parentId, isActive: true },
         select: { id: true },
       });
-      peers.forEach(peer => viewers.add(peer.id));
+      peers.forEach((peer) => viewers.add(peer.id));
     }
 
     return Array.from(viewers);

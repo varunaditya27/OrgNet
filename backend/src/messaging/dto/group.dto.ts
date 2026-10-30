@@ -1,4 +1,11 @@
-import { IsString, IsOptional, IsArray, IsInt, MinLength, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  IsInt,
+  MinLength,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateGroupDto {
   @IsString({ message: 'Group name must be a string' })
@@ -23,7 +30,7 @@ export class UpdateGroupDto {
   @IsOptional()
   name?: string;
 
-  @IsString({ message: 'Description must be a string' }) 
+  @IsString({ message: 'Description must be a string' })
   @IsOptional()
   @MaxLength(500, { message: 'Description cannot exceed 500 characters' })
   description?: string;

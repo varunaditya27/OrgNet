@@ -1,4 +1,12 @@
-import { IsString, IsNotEmpty, IsOptional, IsArray, IsInt, Min, IsNumber } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsArray,
+  IsInt,
+  Min,
+  IsNumber,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateTeamDto {

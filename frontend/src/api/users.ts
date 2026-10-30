@@ -11,18 +11,33 @@ export interface UserQueryParams {
   includeInactive?: boolean
 }
 
+interface UsersListResponse {
+  users: User[]
+  total: number
+  page: number
+  limit: number
+}
+
 export const listUsers = async (params: UserQueryParams = {}) => {
-  const { data } = await apiClient.get<PaginatedResponse<User>>(
+  const { data } = await apiClient.get<UsersListResponse>(
     API_ENDPOINTS.users.base,
     {
       params,
     },
   )
-  return data
+  return {
+    data: data.users,
+    pagination: {
+      page: data.page,
+      limit: data.limit,
+      total: data.total,
+      totalPages: data.limit > 0 ? Math.ceil(data.total / data.limit) : 0,
+    },
+  } satisfies PaginatedResponse<User>
 }
 
 export const getUserById = async (id: number | string) => {
-  const { data } = await apiClient.get<User>(API_ENDPOINTS.users.profile(id))
+  const { data } = await apiClient.get<User>(API_ENDPOINTS.users.detail(id))
   return data
 }
 
@@ -46,7 +61,7 @@ export const updateUser = async (
   payload: UpdateUserPayload,
 ) => {
   const { data } = await apiClient.patch<User>(
-    API_ENDPOINTS.users.profile(id),
+    API_ENDPOINTS.users.detail(id),
     payload,
   )
   return data
@@ -65,15 +80,15 @@ export const fetchUserHierarchy = async (id: number | string) => {
 }
 
 export const deactivateUser = async (id: number | string) => {
-  const { data } = await apiClient.post<User>(
-    `${API_ENDPOINTS.users.profile(id)}/deactivate`,
+  const { data } = await apiClient.patch<User>(
+    API_ENDPOINTS.users.adminDeactivate(id),
   )
   return data
 }
 
 export const reactivateUser = async (id: number | string) => {
-  const { data } = await apiClient.post<User>(
-    `${API_ENDPOINTS.users.profile(id)}/reactivate`,
+  const { data } = await apiClient.patch<User>(
+    API_ENDPOINTS.users.adminActivate(id),
   )
   return data
 }

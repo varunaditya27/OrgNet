@@ -10,7 +10,7 @@ export * from './dto';
 export * from './guards/jwt-auth.guard';
 export * from './guards/roles.guard';
 
-// Strategies  
+// Strategies
 export * from './strategies/jwt.strategy';
 
 // Interfaces

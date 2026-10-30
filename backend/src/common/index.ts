@@ -1,8 +1,14 @@
 // Guards
-export { TreeBasedRBACGuard, HierarchyPermission } from './guards/tree-based-rbac.guard';
+export {
+  TreeBasedRBACGuard,
+  HierarchyPermission,
+} from './guards/tree-based-rbac.guard';
 export type { RBACConfig } from './guards/tree-based-rbac.guard';
 export { CommunicationGuard } from './guards/communication.guard';
-export { ResourceAccessGuard, ResourcePermission } from './guards/resource-access.guard';
+export {
+  ResourceAccessGuard,
+  ResourcePermission,
+} from './guards/resource-access.guard';
 export type { ResourceConfig } from './guards/resource-access.guard';
 
 // Decorators

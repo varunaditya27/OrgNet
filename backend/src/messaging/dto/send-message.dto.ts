@@ -1,4 +1,10 @@
-import { IsString, IsInt, IsOptional, MinLength, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsInt,
+  IsOptional,
+  MinLength,
+  MaxLength,
+} from 'class-validator';
 
 export class SendMessageDto {
   @IsString({ message: 'Content must be a string' })

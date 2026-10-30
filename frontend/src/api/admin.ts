@@ -3,9 +3,27 @@ import type { Role } from '@/utils/roles'
 import { apiClient } from './client'
 import { API_ENDPOINTS } from './endpoints'
 
+interface SystemStatsResponse {
+  users: { total: number; active: number }
+  teams: { total: number; teamsWithoutMembers: number }
+  messages: { todaysSent: number }
+  files: { totalFiles: number; totalSize: number }
+}
+
 export const fetchSystemStats = async () => {
-  const { data } = await apiClient.get<SystemStats>(API_ENDPOINTS.admin.stats)
-  return data
+  const { data } = await apiClient.get<SystemStatsResponse>(
+    API_ENDPOINTS.admin.stats,
+  )
+  return {
+    totalUsers: data.users.total,
+    activeUsers: data.users.active,
+    inactiveUsers: data.users.total - data.users.active,
+    totalTeams: data.teams.total,
+    activeTeams: data.teams.total - data.teams.teamsWithoutMembers,
+    messagesToday: data.messages.todaysSent,
+    totalFiles: data.files.totalFiles,
+    storageUsedMb: data.files.totalSize / (1024 * 1024),
+  } satisfies SystemStats
 }
 
 export interface AuditLogQueryParams {

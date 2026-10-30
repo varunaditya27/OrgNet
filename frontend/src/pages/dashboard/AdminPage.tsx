@@ -60,7 +60,7 @@ const AdminPage = () => {
               title="Active sessions"
               value={statsQuery.data.activeUsers}
               description="Currently authenticated"
-              trend={{ label: `${statsQuery.data.pendingInvites} invites pending` }}
+              trend={{ label: `${statsQuery.data.inactiveUsers} inactive accounts` }}
             />
             <StatCard
               title="Teams online"
@@ -71,7 +71,7 @@ const AdminPage = () => {
             <StatCard
               title="Storage footprint"
               value={`${typeof statsQuery.data.storageUsedMb === 'number' ? statsQuery.data.storageUsedMb.toFixed(1) : '0.0'} MB`}
-              description={`Files shared this week: ${typeof statsQuery.data.filesSharedThisWeek === 'number' ? statsQuery.data.filesSharedThisWeek : 0}`}
+              description={`Total files: ${statsQuery.data.totalFiles}`}
             />
           </>
         ) : null}

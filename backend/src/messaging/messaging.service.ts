@@ -17,17 +17,34 @@ import {
   PaginatedMessagesDto,
 } from './dto';
 import { Role } from '../common/enums';
+import type { HierarchyUser } from '../common/types';
+import type { Prisma } from '@prisma/client';
+
+interface ConversationRow {
+  participantId: number;
+  participantName: string;
+  participantEmail: string;
+  lastMessageId: number | null;
+  lastMessageContent: string;
+  lastMessageTimestamp: Date;
+  lastMessageSenderId: number;
+}
 
 @Injectable()
 export class MessagingService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async sendMessage(sendMessageDto: SendMessageDto, senderId: number): Promise<MessageResponseDto> {
+  async sendMessage(
+    sendMessageDto: SendMessageDto,
+    senderId: number,
+  ): Promise<MessageResponseDto> {
     const { content, receiverId, groupId } = sendMessageDto;
 
     // Validate that either receiverId or groupId is provided, but not both
     if ((!receiverId && !groupId) || (receiverId && groupId)) {
-      throw new BadRequestException('Must specify either receiverId or groupId, but not both');
+      throw new BadRequestException(
+        'Must specify either receiverId or groupId, but not both',
+      );
     }
 
     const sender = await this.prisma.user.findUnique({
@@ -43,7 +60,13 @@ export class MessagingService {
     if (receiverId) {
       const receiver = await this.prisma.user.findUnique({
         where: { id: receiverId },
-        select: { id: true, name: true, email: true, role: true, parentId: true },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          parentId: true,
+        },
       });
 
       if (!receiver) {
@@ -51,7 +74,7 @@ export class MessagingService {
       }
 
       // Validate RBAC rules for direct messaging
-      await this.validateDirectMessagePermission(sender, receiver);
+      this.validateDirectMessagePermission(sender, receiver);
 
       const message = await this.prisma.message.create({
         data: {
@@ -73,7 +96,15 @@ export class MessagingService {
       const group = await this.prisma.group.findUnique({
         where: { id: groupId },
         include: {
-          members: { select: { id: true, name: true, email: true, role: true, parentId: true } },
+          members: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              parentId: true,
+            },
+          },
         },
       });
 
@@ -82,13 +113,13 @@ export class MessagingService {
       }
 
       // Check if sender is a member of the group
-      const isMember = group.members.some(member => member.id === senderId);
+      const isMember = group.members.some((member) => member.id === senderId);
       if (!isMember) {
         throw new ForbiddenException('You are not a member of this group');
       }
 
       // Validate RBAC rules for group messaging
-      await this.validateGroupMessagePermission(sender, group.members);
+      this.validateGroupMessagePermission(sender, group.members);
 
       const message = await this.prisma.message.create({
         data: {
@@ -119,7 +150,7 @@ export class MessagingService {
     }
 
     // Get all direct conversations (both sent and received messages)
-    const conversations = await this.prisma.$queryRaw<any[]>`
+    const conversations = await this.prisma.$queryRaw<ConversationRow[]>`
       WITH conversation_participants AS (
         SELECT DISTINCT
           CASE 
@@ -168,24 +199,26 @@ export class MessagingService {
 
     // Filter conversations based on RBAC rules
     const allowedConversations: ConversationDto[] = [];
-    
+
     for (const conv of conversations) {
       const participant = await this.prisma.user.findUnique({
         where: { id: conv.participantId },
         select: { id: true, role: true, parentId: true },
       });
 
-      if (participant && await this.canCommunicateWith(user, participant)) {
+      if (participant && this.canCommunicateWith(user, participant)) {
         allowedConversations.push({
           participantId: conv.participantId,
           participantName: conv.participantName,
           participantEmail: conv.participantEmail,
-          lastMessage: conv.lastMessageId ? {
-            id: conv.lastMessageId,
-            content: conv.lastMessageContent,
-            timestamp: conv.lastMessageTimestamp,
-            senderId: conv.lastMessageSenderId,
-          } : null,
+          lastMessage: conv.lastMessageId
+            ? {
+                id: conv.lastMessageId,
+                content: conv.lastMessageContent,
+                timestamp: conv.lastMessageTimestamp,
+                senderId: conv.lastMessageSenderId,
+              }
+            : null,
           unreadCount: 0, // TODO: Implement unread count logic
         });
       }
@@ -202,7 +235,9 @@ export class MessagingService {
     limit: number = 50,
   ): Promise<PaginatedMessagesDto> {
     if ((!receiverId && !groupId) || (receiverId && groupId)) {
-      throw new BadRequestException('Must specify either receiverId or groupId, but not both');
+      throw new BadRequestException(
+        'Must specify either receiverId or groupId, but not both',
+      );
     }
 
     const user = await this.prisma.user.findUnique({
@@ -214,7 +249,7 @@ export class MessagingService {
       throw new NotFoundException('User not found');
     }
 
-    let whereClause: any;
+    let whereClause: Prisma.MessageWhereInput;
 
     if (receiverId) {
       // Direct message conversation
@@ -228,7 +263,7 @@ export class MessagingService {
       }
 
       // Check if user can communicate with receiver
-      if (!await this.canCommunicateWith(user, receiver)) {
+      if (!this.canCommunicateWith(user, receiver)) {
         throw new ForbiddenException('You cannot access this conversation');
       }
 
@@ -238,7 +273,7 @@ export class MessagingService {
           { senderId: receiverId, receiverId: userId },
         ],
       };
-    } else if (groupId) {
+    } else {
       // Group message conversation
       const group = await this.prisma.group.findUnique({
         where: { id: groupId },
@@ -251,7 +286,7 @@ export class MessagingService {
         throw new NotFoundException('Group not found');
       }
 
-      const isMember = group.members.some(member => member.id === userId);
+      const isMember = group.members.some((member) => member.id === userId);
       if (!isMember) {
         throw new ForbiddenException('You are not a member of this group');
       }
@@ -277,7 +312,7 @@ export class MessagingService {
     ]);
 
     return {
-      messages: messages.map(this.mapMessageToResponse),
+      messages: messages.map((message) => this.mapMessageToResponse(message)),
       total,
       page,
       limit,
@@ -285,7 +320,10 @@ export class MessagingService {
     };
   }
 
-  async deleteMessage(messageId: number, userId: number): Promise<{ message: string }> {
+  async deleteMessage(
+    messageId: number,
+    userId: number,
+  ): Promise<{ message: string }> {
     const message = await this.prisma.message.findUnique({
       where: { id: messageId },
       include: {
@@ -308,7 +346,9 @@ export class MessagingService {
 
     // Only message sender or admin can delete messages
     if (message.senderId !== userId && user.role !== Role.ADMIN) {
-      throw new ForbiddenException('You can only delete your own messages or be an admin');
+      throw new ForbiddenException(
+        'You can only delete your own messages or be an admin',
+      );
     }
 
     await this.prisma.message.delete({
@@ -319,7 +359,10 @@ export class MessagingService {
   }
 
   // Group management methods
-  async createGroup(createGroupDto: CreateGroupDto, creatorId: number): Promise<GroupResponseDto> {
+  async createGroup(
+    createGroupDto: CreateGroupDto,
+    creatorId: number,
+  ): Promise<GroupResponseDto> {
     const { name, description, memberIds } = createGroupDto;
 
     const creator = await this.prisma.user.findUnique({
@@ -343,8 +386,10 @@ export class MessagingService {
 
     // Validate RBAC rules for group creation
     for (const member of members) {
-      if (!await this.canCommunicateWith(creator, member)) {
-        throw new ForbiddenException(`You cannot add user ${member.id} to the group`);
+      if (!this.canCommunicateWith(creator, member)) {
+        throw new ForbiddenException(
+          `You cannot add user ${member.id} to the group`,
+        );
       }
     }
 
@@ -356,7 +401,7 @@ export class MessagingService {
         name,
         description,
         members: {
-          connect: allMemberIds.map(id => ({ id })),
+          connect: allMemberIds.map((id) => ({ id })),
         },
       },
       include: {
@@ -390,11 +435,16 @@ export class MessagingService {
         _count: {
           select: { messages: true },
         },
+        messages: {
+          orderBy: { timestamp: 'desc' },
+          take: 1,
+          select: { id: true, content: true, timestamp: true, senderId: true },
+        },
       },
       orderBy: { updatedAt: 'desc' },
     });
 
-    return groups.map(group => ({
+    return groups.map((group) => ({
       id: group.id,
       name: group.name,
       description: group.description,
@@ -402,6 +452,7 @@ export class MessagingService {
       updatedAt: group.updatedAt,
       members: group.members,
       messageCount: group._count.messages,
+      lastMessage: group.messages[0] ?? null,
     }));
   }
 
@@ -422,7 +473,7 @@ export class MessagingService {
       throw new NotFoundException('Group not found');
     }
 
-    const isMember = group.members.some(member => member.id === userId);
+    const isMember = group.members.some((member) => member.id === userId);
     if (!isMember) {
       throw new ForbiddenException('You are not a member of this group');
     }
@@ -438,7 +489,11 @@ export class MessagingService {
     };
   }
 
-  async updateGroup(groupId: number, updateGroupDto: UpdateGroupDto, userId: number): Promise<GroupResponseDto> {
+  async updateGroup(
+    groupId: number,
+    updateGroupDto: UpdateGroupDto,
+    userId: number,
+  ): Promise<GroupResponseDto> {
     const group = await this.prisma.group.findUnique({
       where: { id: groupId },
       include: {
@@ -460,9 +515,11 @@ export class MessagingService {
     }
 
     // Only admin or group members can update group (basic implementation)
-    const isMember = group.members.some(member => member.id === userId);
+    const isMember = group.members.some((member) => member.id === userId);
     if (!isMember && user.role !== Role.ADMIN) {
-      throw new ForbiddenException('You can only update groups you are a member of');
+      throw new ForbiddenException(
+        'You can only update groups you are a member of',
+      );
     }
 
     const updatedGroup = await this.prisma.group.update({
@@ -489,7 +546,11 @@ export class MessagingService {
     };
   }
 
-  async addGroupMembers(groupId: number, addGroupMembersDto: AddGroupMembersDto, userId: number): Promise<GroupResponseDto> {
+  async addGroupMembers(
+    groupId: number,
+    addGroupMembersDto: AddGroupMembersDto,
+    userId: number,
+  ): Promise<GroupResponseDto> {
     const { memberIds } = addGroupMembersDto;
 
     const group = await this.prisma.group.findUnique({
@@ -513,9 +574,11 @@ export class MessagingService {
     }
 
     // Check if requesting user is a member or admin
-    const isMember = group.members.some(member => member.id === userId);
+    const isMember = group.members.some((member) => member.id === userId);
     if (!isMember && requestingUser.role !== Role.ADMIN) {
-      throw new ForbiddenException('You must be a group member to add new members');
+      throw new ForbiddenException(
+        'You must be a group member to add new members',
+      );
     }
 
     // Validate new members
@@ -530,8 +593,10 @@ export class MessagingService {
 
     // Validate RBAC rules for adding members
     for (const member of newMembers) {
-      if (!await this.canCommunicateWith(requestingUser, member)) {
-        throw new ForbiddenException(`You cannot add user ${member.id} to the group`);
+      if (!this.canCommunicateWith(requestingUser, member)) {
+        throw new ForbiddenException(
+          `You cannot add user ${member.id} to the group`,
+        );
       }
     }
 
@@ -539,7 +604,7 @@ export class MessagingService {
       where: { id: groupId },
       data: {
         members: {
-          connect: memberIds.map(id => ({ id })),
+          connect: memberIds.map((id) => ({ id })),
         },
       },
       include: {
@@ -563,7 +628,11 @@ export class MessagingService {
     };
   }
 
-  async removeGroupMembers(groupId: number, removeGroupMembersDto: RemoveGroupMembersDto, userId: number): Promise<GroupResponseDto> {
+  async removeGroupMembers(
+    groupId: number,
+    removeGroupMembersDto: RemoveGroupMembersDto,
+    userId: number,
+  ): Promise<GroupResponseDto> {
     const { memberIds } = removeGroupMembersDto;
 
     const group = await this.prisma.group.findUnique({
@@ -587,7 +656,7 @@ export class MessagingService {
     }
 
     // Only admin or the members themselves can remove members
-    const isMember = group.members.some(member => member.id === userId);
+    const isMember = group.members.some((member) => member.id === userId);
     const isRemovingSelf = memberIds.length === 1 && memberIds[0] === userId;
 
     if (!isMember && user.role !== Role.ADMIN) {
@@ -595,14 +664,16 @@ export class MessagingService {
     }
 
     if (!isRemovingSelf && user.role !== Role.ADMIN) {
-      throw new ForbiddenException('You can only remove yourself from the group');
+      throw new ForbiddenException(
+        'You can only remove yourself from the group',
+      );
     }
 
     const updatedGroup = await this.prisma.group.update({
       where: { id: groupId },
       data: {
         members: {
-          disconnect: memberIds.map(id => ({ id })),
+          disconnect: memberIds.map((id) => ({ id })),
         },
       },
       include: {
@@ -627,22 +698,35 @@ export class MessagingService {
   }
 
   // Helper methods for RBAC validation
-  private async validateDirectMessagePermission(sender: any, receiver: any): Promise<void> {
-    if (!await this.canCommunicateWith(sender, receiver)) {
-      throw new ForbiddenException('You are not authorized to send messages to this user');
+  private validateDirectMessagePermission(
+    sender: HierarchyUser,
+    receiver: HierarchyUser,
+  ): void {
+    if (!this.canCommunicateWith(sender, receiver)) {
+      throw new ForbiddenException(
+        'You are not authorized to send messages to this user',
+      );
     }
   }
 
-  private async validateGroupMessagePermission(sender: any, groupMembers: any[]): Promise<void> {
+  private validateGroupMessagePermission(
+    sender: HierarchyUser,
+    groupMembers: HierarchyUser[],
+  ): void {
     // For group messages, validate that sender can communicate with all members
     for (const member of groupMembers) {
-      if (member.id !== sender.id && !await this.canCommunicateWith(sender, member)) {
-        throw new ForbiddenException('You are not authorized to send messages in this group');
+      if (member.id !== sender.id && !this.canCommunicateWith(sender, member)) {
+        throw new ForbiddenException(
+          'You are not authorized to send messages in this group',
+        );
       }
     }
   }
 
-  private async canCommunicateWith(user1: any, user2: any): Promise<boolean> {
+  private canCommunicateWith(
+    user1: HierarchyUser,
+    user2: HierarchyUser,
+  ): boolean {
     // Same user can always communicate with themselves
     if (user1.id === user2.id) {
       return true;
@@ -679,7 +763,9 @@ export class MessagingService {
     return false;
   }
 
-  private mapMessageToResponse(message: any): MessageResponseDto {
+  private mapMessageToResponse(
+    message: MessageResponseDto,
+  ): MessageResponseDto {
     return {
       id: message.id,
       content: message.content,

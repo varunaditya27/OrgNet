@@ -1,4 +1,4 @@
-import type { PaginatedResponse, Team, TeamMember } from '@/types'
+import type { PaginatedResponse, Team } from '@/types'
 import { apiClient } from './client'
 import { API_ENDPOINTS } from './endpoints'
 
@@ -29,11 +29,14 @@ export interface RemoveMembersPayload {
 }
 
 export const listTeams = async (params: TeamQueryParams = {}) => {
-  const { data } = await apiClient.get<PaginatedResponse<Team>>(
-    API_ENDPOINTS.teams.base,
-    { params },
-  )
-  return data
+  const { data } = await apiClient.get<{
+    teams: Team[]
+    pagination: PaginatedResponse<Team>['pagination']
+  }>(API_ENDPOINTS.teams.base, { params })
+  return {
+    data: data.teams,
+    pagination: data.pagination,
+  } satisfies PaginatedResponse<Team>
 }
 
 export const getTeamById = async (id: number | string) => {

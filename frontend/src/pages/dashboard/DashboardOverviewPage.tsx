@@ -34,11 +34,11 @@ const DashboardOverviewPage = () => {
     const {
       activeUsers = 0,
       totalUsers = 0,
-      pendingInvites = 0,
+      inactiveUsers = 0,
       activeTeams = 0,
       totalTeams = 0,
       messagesToday = 0,
-      filesSharedThisWeek = 0,
+      totalFiles = 0,
       storageUsedMb,
     } = statsQuery.data || {};
 
@@ -49,8 +49,8 @@ const DashboardOverviewPage = () => {
         description: `${totalUsers} total users`,
         icon: <Users className="h-4 w-4" />, 
         trend: {
-          label: `${pendingInvites} pending invites`,
-          isPositive: pendingInvites === 0,
+          label: `${inactiveUsers} inactive accounts`,
+          isPositive: inactiveUsers === 0,
         },
       },
       {
@@ -70,8 +70,8 @@ const DashboardOverviewPage = () => {
         icon: <MessageSquare className="h-4 w-4" />,
       },
       {
-        title: 'Files shared (7d)',
-        value: filesSharedThisWeek,
+        title: 'Files shared',
+        value: totalFiles,
         description: `${typeof storageUsedMb === 'number' ? storageUsedMb.toFixed(1) : '0.0'} MB storage used`,
         icon: <FileText className="h-4 w-4" />,
       },

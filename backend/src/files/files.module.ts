@@ -14,11 +14,11 @@ import { PrismaModule } from '../prisma/prisma.module';
       },
       fileFilter: (req, file, callback) => {
         const allowedTypes = process.env.ALLOWED_FILE_TYPES?.split(',') || [];
-        
+
         if (allowedTypes.length > 0 && !allowedTypes.includes(file.mimetype)) {
           return callback(new Error('File type not allowed'), false);
         }
-        
+
         callback(null, true);
       },
     }),

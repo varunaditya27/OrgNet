@@ -6,14 +6,15 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET') || 'fallback-secret-key',
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.getOrThrow<string>('JWT_SECRET'),
         signOptions: {
           expiresIn: configService.get<string>('JWT_EXPIRES_IN') || '24h',
         },
@@ -21,6 +22,7 @@ import { PrismaService } from '../prisma/prisma.service';
       inject: [ConfigService],
     }),
     ConfigModule,
+    MailModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, PrismaService],

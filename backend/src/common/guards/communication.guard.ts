@@ -1,13 +1,31 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Role } from '../../common/enums';
+import type { HierarchyUser } from '../types';
+import type { AuthenticatedRequest } from '../types';
+
+type IdLike = string | number;
+
+interface CommunicationInput {
+  receiverId?: IdLike;
+  groupId?: IdLike;
+  memberIds?: IdLike[];
+}
+
+const toInt = (value: IdLike): number => parseInt(String(value), 10);
 
 @Injectable()
 export class CommunicationGuard implements CanActivate {
   constructor(private readonly prisma: PrismaService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const currentUser = request.user;
 
     if (!currentUser) {
@@ -17,50 +35,45 @@ export class CommunicationGuard implements CanActivate {
     // Extract communication parameters based on the endpoint
     const communicationContext = this.extractCommunicationContext(request);
 
-    return await this.validateCommunicationPermission(currentUser, communicationContext);
+    return await this.validateCommunicationPermission(
+      currentUser,
+      communicationContext,
+    );
   }
 
-  private extractCommunicationContext(request: any): {
+  private extractCommunicationContext(request: AuthenticatedRequest): {
     type: 'direct' | 'group' | 'group_management';
     targetUserId?: number;
     groupId?: number;
     memberIds?: number[];
   } {
-    const body = request.body || {};
-    const params = request.params || {};
-    const query = request.query || {};
+    const body = (request.body ?? {}) as CommunicationInput;
+    const params = request.params as { groupId?: string };
+    const query = request.query as { groupId?: string };
 
     // Direct message
     if (body.receiverId) {
       return {
         type: 'direct',
-        targetUserId: parseInt(body.receiverId, 10),
+        targetUserId: toInt(body.receiverId),
       };
     }
 
     // Group message
     if (body.groupId || params.groupId || query.groupId) {
-      const groupId = parseInt(body.groupId || params.groupId || query.groupId, 10);
+      const groupId = toInt(body.groupId || params.groupId || query.groupId!);
       return {
         type: 'group',
         groupId,
       };
     }
 
-    // Group management (adding/removing members)
+    // Group management (adding/removing members, or creating a group when there is no groupId)
     if (body.memberIds && Array.isArray(body.memberIds)) {
       return {
         type: 'group_management',
-        groupId: params.groupId ? parseInt(params.groupId, 10) : undefined,
-        memberIds: body.memberIds.map((id: any) => parseInt(id, 10)),
-      };
-    }
-
-    // Group creation
-    if (body.memberIds && Array.isArray(body.memberIds)) {
-      return {
-        type: 'group_management',
-        memberIds: body.memberIds.map((id: any) => parseInt(id, 10)),
+        groupId: params.groupId ? toInt(params.groupId) : undefined,
+        memberIds: body.memberIds.map(toInt),
       };
     }
 
@@ -68,8 +81,13 @@ export class CommunicationGuard implements CanActivate {
   }
 
   private async validateCommunicationPermission(
-    currentUser: any,
-    context: { type: string; targetUserId?: number; groupId?: number; memberIds?: number[] },
+    currentUser: HierarchyUser,
+    context: {
+      type: string;
+      targetUserId?: number;
+      groupId?: number;
+      memberIds?: number[];
+    },
   ): Promise<boolean> {
     const currentUserDetails = await this.prisma.user.findUnique({
       where: { id: currentUser.id },
@@ -82,10 +100,16 @@ export class CommunicationGuard implements CanActivate {
 
     switch (context.type) {
       case 'direct':
-        return await this.validateDirectCommunication(currentUserDetails, context.targetUserId!);
+        return await this.validateDirectCommunication(
+          currentUserDetails,
+          context.targetUserId!,
+        );
 
       case 'group':
-        return await this.validateGroupCommunication(currentUserDetails, context.groupId!);
+        return await this.validateGroupCommunication(
+          currentUserDetails,
+          context.groupId!,
+        );
 
       case 'group_management':
         return await this.validateGroupManagement(
@@ -99,7 +123,10 @@ export class CommunicationGuard implements CanActivate {
     }
   }
 
-  private async validateDirectCommunication(currentUser: any, targetUserId: number): Promise<boolean> {
+  private async validateDirectCommunication(
+    currentUser: HierarchyUser,
+    targetUserId: number,
+  ): Promise<boolean> {
     const targetUser = await this.prisma.user.findUnique({
       where: { id: targetUserId },
       select: { id: true, role: true, parentId: true, isActive: true },
@@ -112,7 +139,10 @@ export class CommunicationGuard implements CanActivate {
     return await this.canCommunicateWith(currentUser, targetUser);
   }
 
-  private async validateGroupCommunication(currentUser: any, groupId: number): Promise<boolean> {
+  private async validateGroupCommunication(
+    currentUser: HierarchyUser,
+    groupId: number,
+  ): Promise<boolean> {
     const group = await this.prisma.group.findUnique({
       where: { id: groupId },
       include: {
@@ -127,15 +157,22 @@ export class CommunicationGuard implements CanActivate {
     }
 
     // Check if user is a member of the group
-    const isMember = group.members.some(member => member.id === currentUser.id);
+    const isMember = group.members.some(
+      (member) => member.id === currentUser.id,
+    );
     if (!isMember) {
       throw new ForbiddenException('You are not a member of this group');
     }
 
     // Validate that user can communicate with all group members
     for (const member of group.members) {
-      if (member.id !== currentUser.id && !await this.canCommunicateWith(currentUser, member)) {
-        throw new ForbiddenException('You cannot communicate with all members of this group');
+      if (
+        member.id !== currentUser.id &&
+        !(await this.canCommunicateWith(currentUser, member))
+      ) {
+        throw new ForbiddenException(
+          'You cannot communicate with all members of this group',
+        );
       }
     }
 
@@ -143,7 +180,7 @@ export class CommunicationGuard implements CanActivate {
   }
 
   private async validateGroupManagement(
-    currentUser: any,
+    currentUser: HierarchyUser,
     groupId: number | undefined,
     memberIds: number[],
   ): Promise<boolean> {
@@ -166,9 +203,13 @@ export class CommunicationGuard implements CanActivate {
       throw new BadRequestException('Group not found');
     }
 
-    const isMember = group.members.some(member => member.id === currentUser.id);
+    const isMember = group.members.some(
+      (member) => member.id === currentUser.id,
+    );
     if (!isMember && currentUser.role !== Role.ADMIN) {
-      throw new ForbiddenException('You must be a group member or admin to manage group membership');
+      throw new ForbiddenException(
+        'You must be a group member or admin to manage group membership',
+      );
     }
 
     // Validate communication with new members
@@ -178,15 +219,20 @@ export class CommunicationGuard implements CanActivate {
     });
 
     for (const member of newMembers) {
-      if (!await this.canCommunicateWith(currentUser, member)) {
-        throw new ForbiddenException(`You cannot add user ${member.id} to the group - insufficient permissions`);
+      if (!(await this.canCommunicateWith(currentUser, member))) {
+        throw new ForbiddenException(
+          `You cannot add user ${member.id} to the group - insufficient permissions`,
+        );
       }
     }
 
     return true;
   }
 
-  private async validateGroupCreation(currentUser: any, memberIds: number[]): Promise<boolean> {
+  private async validateGroupCreation(
+    currentUser: HierarchyUser,
+    memberIds: number[],
+  ): Promise<boolean> {
     const members = await this.prisma.user.findMany({
       where: { id: { in: memberIds } },
       select: { id: true, role: true, parentId: true, isActive: true },
@@ -198,8 +244,13 @@ export class CommunicationGuard implements CanActivate {
 
     // Validate that user can communicate with all proposed members
     for (const member of members) {
-      if (member.id !== currentUser.id && !await this.canCommunicateWith(currentUser, member)) {
-        throw new ForbiddenException(`You cannot create a group with user ${member.id} - insufficient permissions`);
+      if (
+        member.id !== currentUser.id &&
+        !(await this.canCommunicateWith(currentUser, member))
+      ) {
+        throw new ForbiddenException(
+          `You cannot create a group with user ${member.id} - insufficient permissions`,
+        );
       }
     }
 
@@ -209,7 +260,10 @@ export class CommunicationGuard implements CanActivate {
   /**
    * Core communication permission logic based on OrgNet hierarchy rules
    */
-  private async canCommunicateWith(user1: any, user2: any): Promise<boolean> {
+  private async canCommunicateWith(
+    user1: HierarchyUser,
+    user2: HierarchyUser,
+  ): Promise<boolean> {
     // Same user can always communicate with themselves
     if (user1.id === user2.id) {
       return true;
@@ -251,7 +305,10 @@ export class CommunicationGuard implements CanActivate {
     return false;
   }
 
-  private async areInSameHierarchyBranch(user1Id: number, user2Id: number): Promise<boolean> {
+  private async areInSameHierarchyBranch(
+    user1Id: number,
+    user2Id: number,
+  ): Promise<boolean> {
     // Check if two managers are in the same hierarchy branch (have common ancestor)
     const result = await this.prisma.$queryRaw<Array<{ count: number }>>`
       WITH RECURSIVE user1_ancestors AS (

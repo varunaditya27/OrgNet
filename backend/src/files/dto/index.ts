@@ -1,4 +1,13 @@
-import { IsString, IsOptional, IsEnum, IsInt, Min, Max, IsUUID } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsInt,
+  Min,
+  Max,
+  IsUUID,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 import { Role } from '../../common/enums';
 
 export class UploadFileDto {
@@ -12,11 +21,13 @@ export class UploadFileDto {
 
 export class FileFilterDto {
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   page?: number = 1;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100)
@@ -35,6 +46,7 @@ export class FileFilterDto {
   mimeType?: string;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   ownerId?: number;
 }
@@ -57,6 +69,7 @@ export class FileResponseDto {
   description?: string;
   allowedRole: Role;
   downloadCount: number;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
   owner: {

@@ -7,16 +7,19 @@ export interface LoginPayload {
   password: string
 }
 
+export interface ForgotPasswordPayload {
+  email: string
+}
+
+export interface ResetPasswordPayload {
+  token: string
+  password: string
+}
+
 export interface RegisterPayload {
   name: string
   email: string
   password: string
-  role?: string
-  managerId?: number | null
-}
-
-export interface ForgotPasswordPayload {
-  email: string
 }
 
 export const login = async (payload: LoginPayload) => {
@@ -38,6 +41,14 @@ export const register = async (payload: RegisterPayload) => {
 export const forgotPassword = async (payload: ForgotPasswordPayload) => {
   const { data } = await apiClient.post<{ message: string }>(
     API_ENDPOINTS.auth.forgotPassword,
+    payload,
+  )
+  return data
+}
+
+export const resetPassword = async (payload: ResetPasswordPayload) => {
+  const { data } = await apiClient.post<{ message: string }>(
+    API_ENDPOINTS.auth.resetPassword,
     payload,
   )
   return data

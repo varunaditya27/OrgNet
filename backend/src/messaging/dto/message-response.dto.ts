@@ -12,7 +12,7 @@ export interface MessageResponseDto {
   };
   receiver?: {
     id: number;
-    name: string; 
+    name: string;
     email: string;
   } | null;
   group?: {
@@ -34,6 +34,12 @@ export interface GroupResponseDto {
     role: string;
   }>;
   messageCount?: number;
+  lastMessage?: {
+    id: number;
+    content: string;
+    timestamp: Date;
+    senderId: number;
+  } | null;
 }
 
 export interface ConversationDto {

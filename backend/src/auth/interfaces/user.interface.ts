@@ -2,7 +2,7 @@ import { Role } from '../../common/enums';
 
 export interface User {
   id: number;
-  name: string;  
+  name: string;
   email: string;
   password: string;
   role: Role;

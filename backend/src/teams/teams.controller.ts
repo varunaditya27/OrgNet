@@ -50,10 +50,7 @@ export class TeamsController {
    * - Employees/Interns: See teams they are members of
    */
   @Get()
-  async findAll(
-    @User('id') userId: number,
-    @Query() query: TeamQueryDto,
-  ) {
+  async findAll(@User('id') userId: number, @Query() query: TeamQueryDto) {
     return this.teamsService.findAll(userId, query);
   }
 
@@ -138,9 +135,7 @@ export class TeamsController {
   @Get('managed/by-manager/:managerId')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
-  async getTeamsByManager(
-    @Param('managerId', ParseIntPipe) managerId: number,
-  ) {
+  async getTeamsByManager(@Param('managerId', ParseIntPipe) managerId: number) {
     return this.teamsService.getTeamsByManager(managerId);
   }
 }

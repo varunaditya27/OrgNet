@@ -15,18 +15,10 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { useRegisterMutation } from '@/hooks/api/auth'
 import { useAuth } from '@/hooks/useAuth'
 import { ROUTES } from '@/routes/paths'
-import { ROLE_LABELS, ROLES } from '@/utils/roles'
 
 const registerSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -36,7 +28,6 @@ const registerSchema = z.object({
     .min(8, 'Password must be at least 8 characters')
     .regex(/[A-Z]/, 'Include at least one uppercase letter')
     .regex(/[0-9]/, 'Include at least one number'),
-  role: z.enum(ROLES),
 })
 
 type RegisterFormValues = z.infer<typeof registerSchema>
@@ -52,7 +43,6 @@ const RegisterPage = () => {
       name: '',
       email: '',
       password: '',
-      role: 'EMPLOYEE',
     },
   })
 
@@ -135,34 +125,6 @@ const RegisterPage = () => {
                 </FormControl>
                 <FormDescription>
                   Must include 8+ characters, an uppercase letter, and a number.
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="role"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Role</FormLabel>
-                <FormControl>
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ROLES.map((role) => (
-                        <SelectItem key={role} value={role}>
-                          {ROLE_LABELS[role]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </FormControl>
-                <FormDescription>
-                  Choose the appropriate access level for this account.
                 </FormDescription>
                 <FormMessage />
               </FormItem>

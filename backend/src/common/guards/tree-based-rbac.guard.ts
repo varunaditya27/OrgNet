@@ -1,16 +1,24 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Role } from '../../common/enums';
+import type { HierarchyUser } from '../types';
+import type { AuthenticatedRequest } from '../types';
 
 export enum HierarchyPermission {
-  SELF = 'self',                    // Access to own data
-  DIRECT_SUBORDINATES = 'direct_subordinates',  // Access to direct reports
-  ALL_SUBORDINATES = 'all_subordinates',       // Access to entire subtree
-  DIRECT_SUPERIOR = 'direct_superior',         // Access to immediate boss
-  PEERS = 'peers',                            // Access to same-level users
-  TEAM_MEMBERS = 'team_members',              // Access to team members
-  ALL_USERS = 'all_users',                    // Full access (admin only)
+  SELF = 'self', // Access to own data
+  DIRECT_SUBORDINATES = 'direct_subordinates', // Access to direct reports
+  ALL_SUBORDINATES = 'all_subordinates', // Access to entire subtree
+  DIRECT_SUPERIOR = 'direct_superior', // Access to immediate boss
+  PEERS = 'peers', // Access to same-level users
+  TEAM_MEMBERS = 'team_members', // Access to team members
+  ALL_USERS = 'all_users', // Full access (admin only)
 }
 
 export interface RBACConfig {
@@ -38,7 +46,7 @@ export class TreeBasedRBACGuard implements CanActivate {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const currentUser = request.user;
 
     if (!currentUser) {
@@ -56,33 +64,29 @@ export class TreeBasedRBACGuard implements CanActivate {
     );
   }
 
-  private extractTargetUserId(request: any, config: RBACConfig): number | null {
-    // Check URL parameters
-    if (request.params?.id) {
-      const id = parseInt(request.params.id, 10);
-      if (!isNaN(id)) return id;
-    }
+  private extractTargetUserId(
+    request: AuthenticatedRequest,
+    config: RBACConfig,
+  ): number | null {
+    const body = (request.body ?? {}) as {
+      userId?: string | number;
+      receiverId?: string | number;
+    };
 
-    if (request.params?.userId) {
-      const id = parseInt(request.params.userId, 10);
-      if (!isNaN(id)) return id;
-    }
+    // Checked in order: URL params, query string, then request body
+    const candidates: Array<string | number | undefined> = [
+      request.params.id,
+      request.params.userId,
+      request.query.userId as string | undefined,
+      body.userId,
+      body.receiverId,
+    ];
 
-    // Check query parameters
-    if (request.query?.userId) {
-      const id = parseInt(request.query.userId, 10);
-      if (!isNaN(id)) return id;
-    }
-
-    // Check request body
-    if (request.body?.userId) {
-      const id = parseInt(request.body.userId, 10);
-      if (!isNaN(id)) return id;
-    }
-
-    if (request.body?.receiverId) {
-      const id = parseInt(request.body.receiverId, 10);
-      if (!isNaN(id)) return id;
+    for (const candidate of candidates) {
+      if (candidate) {
+        const id = parseInt(String(candidate), 10);
+        if (!isNaN(id)) return id;
+      }
     }
 
     // If no target user is specified and self access is allowed, return current user ID
@@ -94,24 +98,33 @@ export class TreeBasedRBACGuard implements CanActivate {
   }
 
   private async validateHierarchyAccess(
-    currentUser: any,
+    currentUser: HierarchyUser,
     targetUserId: number | null,
     config: RBACConfig,
   ): Promise<boolean> {
     const { permissions } = config;
 
     // Admin has all access unless explicitly restricted
-    if (currentUser.role === Role.ADMIN && permissions.includes(HierarchyPermission.ALL_USERS)) {
+    if (
+      currentUser.role === Role.ADMIN &&
+      permissions.includes(HierarchyPermission.ALL_USERS)
+    ) {
       return true;
     }
 
     // If no target user specified, check if general access is allowed
     if (!targetUserId) {
-      return permissions.includes(HierarchyPermission.ALL_USERS) && currentUser.role === Role.ADMIN;
+      return (
+        permissions.includes(HierarchyPermission.ALL_USERS) &&
+        currentUser.role === Role.ADMIN
+      );
     }
 
     // Self access
-    if (targetUserId === currentUser.id && permissions.includes(HierarchyPermission.SELF)) {
+    if (
+      targetUserId === currentUser.id &&
+      permissions.includes(HierarchyPermission.SELF)
+    ) {
       return true;
     }
 
@@ -137,7 +150,9 @@ export class TreeBasedRBACGuard implements CanActivate {
 
     // Check specific permission types
     for (const permission of permissions) {
-      if (await this.checkPermission(permission, currentUserDetails, targetUser)) {
+      if (
+        await this.checkPermission(permission, currentUserDetails, targetUser)
+      ) {
         return true;
       }
     }
@@ -147,8 +162,8 @@ export class TreeBasedRBACGuard implements CanActivate {
 
   private async checkPermission(
     permission: HierarchyPermission,
-    currentUser: any,
-    targetUser: any,
+    currentUser: HierarchyUser,
+    targetUser: HierarchyUser,
   ): Promise<boolean> {
     switch (permission) {
       case HierarchyPermission.SELF:
@@ -167,7 +182,7 @@ export class TreeBasedRBACGuard implements CanActivate {
         return await this.isDirectSuperior(currentUser.id, targetUser.id);
 
       case HierarchyPermission.PEERS:
-        return await this.arePeers(currentUser, targetUser);
+        return this.arePeers(currentUser, targetUser);
 
       case HierarchyPermission.TEAM_MEMBERS:
         return await this.areTeamMembers(currentUser.id, targetUser.id);
@@ -177,7 +192,10 @@ export class TreeBasedRBACGuard implements CanActivate {
     }
   }
 
-  private async isDirectSubordinate(managerId: number, subordinateId: number): Promise<boolean> {
+  private async isDirectSubordinate(
+    managerId: number,
+    subordinateId: number,
+  ): Promise<boolean> {
     const subordinate = await this.prisma.user.findUnique({
       where: { id: subordinateId },
       select: { parentId: true },
@@ -186,7 +204,10 @@ export class TreeBasedRBACGuard implements CanActivate {
     return subordinate?.parentId === managerId;
   }
 
-  private async isSubordinateInTree(managerId: number, subordinateId: number): Promise<boolean> {
+  private async isSubordinateInTree(
+    managerId: number,
+    subordinateId: number,
+  ): Promise<boolean> {
     // Recursive query to check if subordinateId is anywhere in managerId's tree
     const result = await this.prisma.$queryRaw<Array<{ id: number }>>`
       WITH RECURSIVE subordinate_tree AS (
@@ -210,7 +231,10 @@ export class TreeBasedRBACGuard implements CanActivate {
     return result.length > 0;
   }
 
-  private async isDirectSuperior(subordinateId: number, superiorId: number): Promise<boolean> {
+  private async isDirectSuperior(
+    subordinateId: number,
+    superiorId: number,
+  ): Promise<boolean> {
     const subordinate = await this.prisma.user.findUnique({
       where: { id: subordinateId },
       select: { parentId: true },
@@ -219,7 +243,7 @@ export class TreeBasedRBACGuard implements CanActivate {
     return subordinate?.parentId === superiorId;
   }
 
-  private async arePeers(user1: any, user2: any): Promise<boolean> {
+  private arePeers(user1: HierarchyUser, user2: HierarchyUser): boolean {
     // Users are peers if they have the same parent
     if (!user1.parentId || !user2.parentId) {
       // Root level users with same role are peers
@@ -229,14 +253,14 @@ export class TreeBasedRBACGuard implements CanActivate {
     return user1.parentId === user2.parentId;
   }
 
-  private async areTeamMembers(user1Id: number, user2Id: number): Promise<boolean> {
+  private async areTeamMembers(
+    user1Id: number,
+    user2Id: number,
+  ): Promise<boolean> {
     // Check if users are in the same team (either managed by same person or in same team table)
     const user1Teams = await this.prisma.team.findMany({
       where: {
-        OR: [
-          { managerId: user1Id },
-          { members: { some: { id: user1Id } } },
-        ],
+        OR: [{ managerId: user1Id }, { members: { some: { id: user1Id } } }],
       },
       select: { id: true },
     });
@@ -245,14 +269,11 @@ export class TreeBasedRBACGuard implements CanActivate {
       return false;
     }
 
-    const teamIds = user1Teams.map(team => team.id);
+    const teamIds = user1Teams.map((team) => team.id);
     const user2InTeams = await this.prisma.team.findMany({
       where: {
         id: { in: teamIds },
-        OR: [
-          { managerId: user2Id },
-          { members: { some: { id: user2Id } } },
-        ],
+        OR: [{ managerId: user2Id }, { members: { some: { id: user2Id } } }],
       },
     });
 

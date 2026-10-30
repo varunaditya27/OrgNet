@@ -13,11 +13,29 @@ export interface ConversationQueryParams {
 }
 
 export const fetchConversations = async (params: ConversationQueryParams = {}) => {
-  const { data } = await apiClient.get<ConversationSummary[]>(
-    API_ENDPOINTS.messaging.conversations,
-    { params },
+  const [direct, groups] = await Promise.all([
+    apiClient.get<ConversationSummary[]>(API_ENDPOINTS.messaging.conversations),
+    apiClient.get<Group[]>(API_ENDPOINTS.messaging.groups),
+  ])
+
+  // The conversations endpoint only lists direct chats, so groups are merged in here.
+  const groupConversations = groups.data.map(
+    (group): ConversationSummary => ({
+      participantId: 0,
+      participantName: group.name,
+      participantEmail: '',
+      lastMessage: group.lastMessage ?? null,
+      unreadCount: 0,
+      isGroup: true,
+      groupId: group.id,
+    }),
   )
-  return data
+
+  const term = params.search?.trim().toLowerCase()
+  const all = [...direct.data, ...groupConversations]
+  return term
+    ? all.filter((conversation) => conversation.participantName.toLowerCase().includes(term))
+    : all
 }
 
 export interface MessagesQueryParams {

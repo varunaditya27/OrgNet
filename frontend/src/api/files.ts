@@ -31,11 +31,22 @@ export interface FileStatsResponse {
 }
 
 export const listFiles = async (params: FileQueryParams = {}) => {
-  const { data } = await apiClient.get<PaginatedResponse<FileItem>>(
-    API_ENDPOINTS.files.base,
-    { params },
-  )
-  return data
+  const { data } = await apiClient.get<{
+    files: FileItem[]
+    total: number
+    page: number
+    limit: number
+    totalPages: number
+  }>(API_ENDPOINTS.files.base, { params })
+  return {
+    data: data.files,
+    pagination: {
+      page: data.page,
+      limit: data.limit,
+      total: data.total,
+      totalPages: data.totalPages,
+    },
+  } satisfies PaginatedResponse<FileItem>
 }
 
 export const getFileById = async (id: number | string) => {

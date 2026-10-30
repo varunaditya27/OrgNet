@@ -332,6 +332,7 @@ type EditUserFormValues = {
 }
 
 const EditUserDialog = ({ user, onClose }: EditUserDialogProps) => {
+  const { user: currentUser } = useAuth()
   const form = useForm<EditUserFormValues>({
     defaultValues: {
       name: user.name,
@@ -396,7 +397,11 @@ const EditUserDialog = ({ user, onClose }: EditUserDialogProps) => {
                 <FormItem>
                   <FormLabel>Role</FormLabel>
                   <FormControl>
-                    <Select value={field.value} onValueChange={field.onChange}>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={currentUser?.role !== 'ADMIN'}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select role" />
                       </SelectTrigger>

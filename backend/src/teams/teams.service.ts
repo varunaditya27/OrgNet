@@ -18,6 +18,7 @@ import {
   TeamQueryDto,
   UserResponseDto,
 } from './dto';
+import type { Prisma, Team } from '@prisma/client';
 
 @Injectable()
 export class TeamsService {
@@ -29,7 +30,7 @@ export class TeamsService {
    */
   async create(
     createTeamDto: CreateTeamDto,
-    managerId: number
+    managerId: number,
   ): Promise<TeamResponseDto> {
     // Verify the user is a manager or admin
     const manager = await this.prisma.user.findUnique({
@@ -40,15 +41,15 @@ export class TeamsService {
       throw new NotFoundException('Manager not found');
     }
 
-    if (![Role.MANAGER, Role.ADMIN].includes(manager.role as Role)) {
+    if (manager.role !== Role.MANAGER && manager.role !== Role.ADMIN) {
       throw new ForbiddenException('Only managers and admins can create teams');
     }
 
     // Check if team name already exists for this manager
     const existingTeam = await this.prisma.team.findFirst({
-      where: { 
+      where: {
         name: createTeamDto.name,
-        managerId: managerId 
+        managerId: managerId,
       },
     });
 
@@ -58,7 +59,11 @@ export class TeamsService {
 
     // Validate member IDs if provided
     if (createTeamDto.memberIds && createTeamDto.memberIds.length > 0) {
-      await this.validateMembers(createTeamDto.memberIds, managerId, manager.role as Role);
+      await this.validateMembers(
+        createTeamDto.memberIds,
+        managerId,
+        manager.role as Role,
+      );
     }
 
     // Create the team
@@ -104,7 +109,7 @@ export class TeamsService {
    */
   async findAll(
     userId: number,
-    query: TeamQueryDto
+    query: TeamQueryDto,
   ): Promise<PaginatedTeamsResponseDto> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -117,7 +122,7 @@ export class TeamsService {
     const { page = 1, limit = 10, search } = query;
     const skip = (page - 1) * limit;
 
-    let whereClause: any = {};
+    const whereClause: Prisma.TeamWhereInput = {};
 
     // Role-based filtering
     if (user.role === Role.ADMIN) {
@@ -222,13 +227,15 @@ export class TeamsService {
     }
 
     // RBAC: Check if user can access this team
-    const canAccess = 
+    const canAccess =
       user.role === Role.ADMIN || // Admins can see all teams
       team.managerId === userId || // Manager can see their team
-      team.members.some(member => member.id === userId); // Members can see their team
+      team.members.some((member) => member.id === userId); // Members can see their team
 
     if (!canAccess) {
-      throw new ForbiddenException('You do not have permission to view this team');
+      throw new ForbiddenException(
+        'You do not have permission to view this team',
+      );
     }
 
     return this.formatTeamResponse(team);
@@ -240,7 +247,7 @@ export class TeamsService {
   async update(
     teamId: number,
     updateTeamDto: UpdateTeamDto,
-    userId: number
+    userId: number,
   ): Promise<TeamResponseDto> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -260,7 +267,9 @@ export class TeamsService {
 
     // RBAC: Only the team manager or admin can update
     if (user.role !== Role.ADMIN && team.managerId !== userId) {
-      throw new ForbiddenException('Only the team manager or admin can update team information');
+      throw new ForbiddenException(
+        'Only the team manager or admin can update team information',
+      );
     }
 
     // Check for name conflicts if name is being updated
@@ -314,7 +323,7 @@ export class TeamsService {
   async addMembers(
     teamId: number,
     addMembersDto: AddMembersDto,
-    userId: number
+    userId: number,
   ): Promise<TeamResponseDto> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -335,18 +344,28 @@ export class TeamsService {
 
     // RBAC: Only the team manager or admin can add members
     if (user.role !== Role.ADMIN && team.managerId !== userId) {
-      throw new ForbiddenException('Only the team manager or admin can add members');
+      throw new ForbiddenException(
+        'Only the team manager or admin can add members',
+      );
     }
 
     // Validate new members
-    await this.validateMembers(addMembersDto.memberIds, team.managerId, user.role as Role);
+    await this.validateMembers(
+      addMembersDto.memberIds,
+      team.managerId,
+      user.role,
+    );
 
     // Check for existing members
-    const existingMemberIds = team.members.map(m => m.id);
-    const newMemberIds = addMembersDto.memberIds.filter(id => !existingMemberIds.includes(id));
+    const existingMemberIds = team.members.map((m) => m.id);
+    const newMemberIds = addMembersDto.memberIds.filter(
+      (id) => !existingMemberIds.includes(id),
+    );
 
     if (newMemberIds.length === 0) {
-      throw new BadRequestException('All specified users are already team members');
+      throw new BadRequestException(
+        'All specified users are already team members',
+      );
     }
 
     const updatedTeam = await this.prisma.team.update({
@@ -389,7 +408,7 @@ export class TeamsService {
   async removeMembers(
     teamId: number,
     removeMembersDto: RemoveMembersDto,
-    userId: number
+    userId: number,
   ): Promise<TeamResponseDto> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -410,15 +429,21 @@ export class TeamsService {
 
     // RBAC: Only the team manager or admin can remove members
     if (user.role !== Role.ADMIN && team.managerId !== userId) {
-      throw new ForbiddenException('Only the team manager or admin can remove members');
+      throw new ForbiddenException(
+        'Only the team manager or admin can remove members',
+      );
     }
 
     // Check if members exist in the team
-    const existingMemberIds = team.members.map(m => m.id);
-    const membersToRemove = removeMembersDto.memberIds.filter(id => existingMemberIds.includes(id));
+    const existingMemberIds = team.members.map((m) => m.id);
+    const membersToRemove = removeMembersDto.memberIds.filter((id) =>
+      existingMemberIds.includes(id),
+    );
 
     if (membersToRemove.length === 0) {
-      throw new BadRequestException('None of the specified users are team members');
+      throw new BadRequestException(
+        'None of the specified users are team members',
+      );
     }
 
     const updatedTeam = await this.prisma.team.update({
@@ -477,7 +502,9 @@ export class TeamsService {
 
     // RBAC: Only the team manager or admin can delete
     if (user.role !== Role.ADMIN && team.managerId !== userId) {
-      throw new ForbiddenException('Only the team manager or admin can delete the team');
+      throw new ForbiddenException(
+        'Only the team manager or admin can delete the team',
+      );
     }
 
     await this.prisma.team.delete({
@@ -517,7 +544,11 @@ export class TeamsService {
   }
 
   // Private helper methods
-  private async validateMembers(memberIds: number[], managerId: number, managerRole: Role): Promise<void> {
+  private async validateMembers(
+    memberIds: number[],
+    managerId: number,
+    managerRole: Role,
+  ): Promise<void> {
     if (memberIds.length === 0) return;
 
     // Check if all member IDs exist and are active
@@ -529,27 +560,35 @@ export class TeamsService {
     });
 
     if (members.length !== memberIds.length) {
-      const foundIds = members.map(m => m.id);
-      const missingIds = memberIds.filter(id => !foundIds.includes(id));
-      throw new BadRequestException(`Users not found or inactive: ${missingIds.join(', ')}`);
+      const foundIds = members.map((m) => m.id);
+      const missingIds = memberIds.filter((id) => !foundIds.includes(id));
+      throw new BadRequestException(
+        `Users not found or inactive: ${missingIds.join(', ')}`,
+      );
     }
 
     // RBAC: For managers, ensure they can only add their subordinates
     if (managerRole === Role.MANAGER) {
       // Get all subordinates of the manager (recursively)
       const subordinates = await this.getAllSubordinates(managerId);
-      const subordinateIds = subordinates.map(s => s.id);
+      const subordinateIds = subordinates.map((s) => s.id);
 
-      const invalidMembers = memberIds.filter(id => !subordinateIds.includes(id) && id !== managerId);
+      const invalidMembers = memberIds.filter(
+        (id) => !subordinateIds.includes(id) && id !== managerId,
+      );
       if (invalidMembers.length > 0) {
-        throw new ForbiddenException('Managers can only add their subordinates to teams');
+        throw new ForbiddenException(
+          'Managers can only add their subordinates to teams',
+        );
       }
     }
 
     // Admins can add anyone, so no additional validation needed
   }
 
-  private async getAllSubordinates(userId: number): Promise<Array<{ id: number }>> {
+  private async getAllSubordinates(
+    userId: number,
+  ): Promise<Array<{ id: number }>> {
     // Recursive query to get all subordinates
     const subordinates = await this.prisma.$queryRaw<Array<{ id: number }>>`
       WITH RECURSIVE subordinate_tree AS (
@@ -565,7 +604,9 @@ export class TeamsService {
     return subordinates;
   }
 
-  private formatTeamResponse(team: any): TeamResponseDto {
+  private formatTeamResponse(
+    team: Team & { manager: object; members: object[] },
+  ): TeamResponseDto {
     return {
       id: team.id,
       name: team.name,

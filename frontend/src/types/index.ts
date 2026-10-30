@@ -30,7 +30,7 @@ export interface Team {
   description?: string | null
   managerId: number
   manager: UserSummary
-  members: TeamMember[]
+  members?: TeamMember[]
   memberCount: number
   createdAt: string
   updatedAt: string
@@ -58,6 +58,12 @@ export interface Group {
   createdAt: string
   updatedAt: string
   members?: UserSummary[]
+  lastMessage?: {
+    id: number
+    content: string
+    timestamp: string
+    senderId: number
+  } | null
 }
 
 export interface ConversationSummary {
@@ -117,10 +123,10 @@ export interface PaginatedResponse<T> {
 export interface SystemStats {
   totalUsers: number
   activeUsers: number
-  pendingInvites: number
+  inactiveUsers: number
   totalTeams: number
   activeTeams: number
   messagesToday: number
-  filesSharedThisWeek: number
+  totalFiles: number
   storageUsedMb: number
 }

@@ -3,11 +3,11 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
-  InternalServerErrorException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '../common/enums';
 import * as bcrypt from 'bcrypt';
+import type { Prisma, Team, User } from '@prisma/client';
 import {
   AdminCreateUserDto,
   AdminUpdateUserDto,
@@ -31,7 +31,7 @@ export class AdminService {
   constructor(private prisma: PrismaService) {}
 
   // ====== AUDIT LOGGING ======
-  
+
   /**
    * Create an audit log entry
    */
@@ -49,7 +49,7 @@ export class AdminService {
           entity: auditData.entity,
           entityId: auditData.entityId,
           details: auditData.details,
-          metadata: auditData.metadata,
+          metadata: auditData.metadata as Prisma.InputJsonValue | undefined,
           ipAddress,
           userAgent,
         },
@@ -65,10 +65,18 @@ export class AdminService {
   async getAuditLogs(
     query: AuditLogQueryDto,
   ): Promise<PaginatedResponseDto<AuditLogResponseDto>> {
-    const { page = 1, limit = 50, action, userId, entity, startDate, endDate } = query;
+    const {
+      page = 1,
+      limit = 50,
+      action,
+      userId,
+      entity,
+      startDate,
+      endDate,
+    } = query;
     const skip = (page - 1) * limit;
 
-    const whereClause: any = {};
+    const whereClause: Prisma.AuditLogWhereInput = {};
 
     if (action) {
       whereClause.action = { contains: action, mode: 'insensitive' };
@@ -80,13 +88,10 @@ export class AdminService {
       whereClause.entity = { contains: entity, mode: 'insensitive' };
     }
     if (startDate || endDate) {
-      whereClause.timestamp = {};
-      if (startDate) {
-        whereClause.timestamp.gte = new Date(startDate);
-      }
-      if (endDate) {
-        whereClause.timestamp.lte = new Date(endDate);
-      }
+      whereClause.timestamp = {
+        ...(startDate && { gte: new Date(startDate) }),
+        ...(endDate && { lte: new Date(endDate) }),
+      };
     }
 
     const [auditLogs, total] = await Promise.all([
@@ -116,7 +121,7 @@ export class AdminService {
         id: log.user.id,
         name: log.user.name,
         email: log.user.email,
-        role: log.user.role as Role, // Type assertion to match our enum
+        role: log.user.role, // Type assertion to match our enum
       },
       action: log.action,
       entity: log.entity,
@@ -285,8 +290,8 @@ export class AdminService {
         entity: 'User',
         entityId: userId,
         details: `Updated user ${updatedUser.name} (${updatedUser.email})`,
-        metadata: { 
-          targetUserId: userId, 
+        metadata: {
+          targetUserId: userId,
           changes: updateUserDto,
           oldRole: existingUser.role,
           newRole: updatedUser.role,
@@ -305,17 +310,17 @@ export class AdminService {
   async getAllUsers(
     query: AdminUserQueryDto,
   ): Promise<PaginatedResponseDto<AdminUserResponseDto>> {
-    const { 
-      page = 1, 
-      limit = 20, 
-      role, 
-      isActive, 
-      search, 
-      includeDeleted = false 
+    const {
+      page = 1,
+      limit = 20,
+      role,
+      isActive,
+      search,
+      includeDeleted = false,
     } = query;
     const skip = (page - 1) * limit;
 
-    const whereClause: any = {};
+    const whereClause: Prisma.UserWhereInput = {};
 
     if (role) {
       whereClause.role = role;
@@ -355,7 +360,7 @@ export class AdminService {
       this.prisma.user.count({ where: whereClause }),
     ]);
 
-    const formattedUsers = users.map(user => this.formatUserResponse(user));
+    const formattedUsers = users.map((user) => this.formatUserResponse(user));
 
     return {
       data: formattedUsers,
@@ -371,6 +376,30 @@ export class AdminService {
   /**
    * Hard delete a user (admin only, bypasses soft delete)
    */
+  async getUserById(id: number): Promise<AdminUserResponseDto> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: {
+        parent: {
+          select: { id: true, name: true, role: true },
+        },
+        _count: {
+          select: {
+            subordinates: true,
+            teamsManaged: true,
+            teamMemberships: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+
+    return this.formatUserResponse(user);
+  }
+
   async deleteUser(
     userId: number,
     adminId: number,
@@ -414,7 +443,11 @@ export class AdminService {
         entity: 'User',
         entityId: userId,
         details: `Permanently deleted user ${user.name} (${user.email})`,
-        metadata: { targetUserId: userId, userName: user.name, userEmail: user.email },
+        metadata: {
+          targetUserId: userId,
+          userName: user.name,
+          userEmail: user.email,
+        },
       },
       ipAddress,
       userAgent,
@@ -438,7 +471,7 @@ export class AdminService {
       throw new BadRequestException('No user IDs provided');
     }
 
-    let updateData: any = {};
+    let updateData: Prisma.UserUncheckedUpdateManyInput = {};
     let actionName = '';
 
     switch (operation) {
@@ -450,20 +483,25 @@ export class AdminService {
         updateData = { isActive: false };
         actionName = 'ADMIN_BULK_DEACTIVATE_USERS';
         break;
-      case 'reassign':
+      case 'reassign': {
         if (!newParentId) {
-          throw new BadRequestException('New parent ID required for reassign operation');
+          throw new BadRequestException(
+            'New parent ID required for reassign operation',
+          );
         }
         // Validate new parent exists
         const newParent = await this.prisma.user.findUnique({
           where: { id: newParentId, isActive: true },
         });
         if (!newParent) {
-          throw new BadRequestException('New parent user not found or inactive');
+          throw new BadRequestException(
+            'New parent user not found or inactive',
+          );
         }
         updateData = { parentId: newParentId };
         actionName = 'ADMIN_BULK_REASSIGN_USERS';
         break;
+      }
       default:
         throw new BadRequestException('Invalid operation');
     }
@@ -482,9 +520,9 @@ export class AdminService {
         action: actionName,
         entity: 'User',
         details: `Bulk ${operation} operation on ${result.count} users. Reason: ${reason}`,
-        metadata: { 
-          userIds, 
-          operation, 
+        metadata: {
+          userIds,
+          operation,
           newParentId,
           reason,
           affectedCount: result.count,
@@ -494,7 +532,7 @@ export class AdminService {
       userAgent,
     );
 
-    return { 
+    return {
       message: `Successfully performed ${operation} on ${result.count} users`,
       affectedUsers: result.count,
     };
@@ -530,9 +568,13 @@ export class AdminService {
       });
 
       if (members.length !== teamDto.memberIds.length) {
-        const foundIds = members.map(m => m.id);
-        const missingIds = teamDto.memberIds.filter(id => !foundIds.includes(id));
-        throw new BadRequestException(`Users not found or inactive: ${missingIds.join(', ')}`);
+        const foundIds = members.map((m) => m.id);
+        const missingIds = teamDto.memberIds.filter(
+          (id) => !foundIds.includes(id),
+        );
+        throw new BadRequestException(
+          `Users not found or inactive: ${missingIds.join(', ')}`,
+        );
       }
     }
 
@@ -575,8 +617,8 @@ export class AdminService {
         entity: 'Team',
         entityId: team.id,
         details: `Created team ${team.name} with manager ${manager.name}`,
-        metadata: { 
-          teamId: team.id, 
+        metadata: {
+          teamId: team.id,
           managerId: teamDto.managerId,
           memberIds: teamDto.memberIds,
         },
@@ -597,7 +639,7 @@ export class AdminService {
     const { page = 1, limit = 20, search, managerId } = query;
     const skip = (page - 1) * limit;
 
-    const whereClause: any = {};
+    const whereClause: Prisma.TeamWhereInput = {};
 
     if (search) {
       whereClause.name = { contains: search, mode: 'insensitive' };
@@ -634,7 +676,7 @@ export class AdminService {
       this.prisma.team.count({ where: whereClause }),
     ]);
 
-    const formattedTeams = teams.map(team => this.formatTeamResponse(team));
+    const formattedTeams = teams.map((team) => this.formatTeamResponse(team));
 
     return {
       data: formattedTeams,
@@ -696,12 +738,7 @@ export class AdminService {
    * Get comprehensive system statistics
    */
   async getSystemStats(): Promise<SystemStatsDto> {
-    const [
-      userStats,
-      teamStats,
-      messageStats,
-      fileStats,
-    ] = await Promise.all([
+    const [userStats, teamStats, messageStats, fileStats] = await Promise.all([
       this.getUserStats(),
       this.getTeamStats(),
       this.getMessageStats(),
@@ -830,7 +867,7 @@ export class AdminService {
           reason: overrideDto.reason,
           targetEntity: overrideDto.targetEntity,
           targetEntityId: overrideDto.targetEntityId,
-          ...overrideDto.metadata,
+          ...(overrideDto.metadata as Record<string, unknown> | undefined),
         },
       },
       ipAddress,
@@ -859,10 +896,13 @@ export class AdminService {
       }),
     ]);
 
-    const byRole = roleStats.reduce((acc, stat) => {
-      acc[stat.role as Role] = stat._count;
-      return acc;
-    }, {} as Record<Role, number>);
+    const byRole = roleStats.reduce(
+      (acc, stat) => {
+        acc[stat.role] = stat._count;
+        return acc;
+      },
+      {} as Record<Role, number>,
+    );
 
     return {
       total,
@@ -891,7 +931,10 @@ export class AdminService {
       }),
     ]);
 
-    const totalMembers = memberStats.reduce((sum, team) => sum + team._count.members, 0);
+    const totalMembers = memberStats.reduce(
+      (sum, team) => sum + team._count.members,
+      0,
+    );
     const averageTeamSize = total > 0 ? totalMembers / total : 0;
 
     return {
@@ -920,14 +963,14 @@ export class AdminService {
       }),
     ]);
 
-    const senderIds = topSenders.map(s => s.senderId);
+    const senderIds = topSenders.map((s) => s.senderId);
     const senderUsers = await this.prisma.user.findMany({
       where: { id: { in: senderIds } },
       select: { id: true, name: true },
     });
 
-    const topSendersWithNames = topSenders.map(sender => {
-      const user = senderUsers.find(u => u.id === sender.senderId);
+    const topSendersWithNames = topSenders.map((sender) => {
+      const user = senderUsers.find((u) => u.id === sender.senderId);
       return {
         userId: sender.senderId,
         name: user?.name || 'Unknown User',
@@ -943,16 +986,17 @@ export class AdminService {
   }
 
   private async getFileStats() {
-    const [totalFiles, activeFiles, sizeResult, downloadResult] = await Promise.all([
-      this.prisma.file.count(),
-      this.prisma.file.count({ where: { isActive: true } }),
-      this.prisma.file.aggregate({
-        _sum: { size: true },
-      }),
-      this.prisma.file.aggregate({
-        _sum: { downloadCount: true },
-      }),
-    ]);
+    const [totalFiles, activeFiles, sizeResult, downloadResult] =
+      await Promise.all([
+        this.prisma.file.count(),
+        this.prisma.file.count({ where: { isActive: true } }),
+        this.prisma.file.aggregate({
+          _sum: { size: true },
+        }),
+        this.prisma.file.aggregate({
+          _sum: { downloadCount: true },
+        }),
+      ]);
 
     return {
       totalFiles,
@@ -962,7 +1006,16 @@ export class AdminService {
     };
   }
 
-  private formatUserResponse(user: any): AdminUserResponseDto {
+  private formatUserResponse(
+    user: User & {
+      parent?: AdminUserResponseDto['parent'];
+      _count?: {
+        subordinates: number;
+        teamsManaged: number;
+        teamMemberships: number;
+      };
+    },
+  ): AdminUserResponseDto {
     return {
       id: user.id,
       name: user.name,
@@ -980,7 +1033,12 @@ export class AdminService {
     };
   }
 
-  private formatTeamResponse(team: any): AdminTeamResponseDto {
+  private formatTeamResponse(
+    team: Team & {
+      manager: AdminTeamResponseDto['manager'];
+      members: AdminTeamResponseDto['members'];
+    },
+  ): AdminTeamResponseDto {
     return {
       id: team.id,
       name: team.name,

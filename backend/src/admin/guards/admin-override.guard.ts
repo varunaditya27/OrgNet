@@ -10,7 +10,7 @@ import { Role } from '../../common/enums';
 
 interface AdminOverrideRequest {
   user: {
-    sub: number;
+    id: number;
     email: string;
     role: Role;
   };
@@ -37,7 +37,7 @@ export class AdminOverrideGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest() as AdminOverrideRequest;
+    const request = context.switchToHttp().getRequest<AdminOverrideRequest>();
     const user = request.user;
 
     // Only admins can use override
@@ -56,12 +56,14 @@ export class AdminOverrideGuard implements CanActivate {
             targetEntityId: request.adminOverride.targetEntityId || 0,
             metadata: {},
           },
-          user.sub,
+          user.id,
           request.ip,
           request.get?.('User-Agent'),
         );
 
-        this.logger.warn(`Admin override executed by ${user.email}: ${request.adminOverride.reason}`);
+        this.logger.warn(
+          `Admin override executed by ${user.email}: ${request.adminOverride.reason}`,
+        );
       } catch (error) {
         this.logger.error('Failed to log admin override:', error);
       }

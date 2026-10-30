@@ -46,7 +46,7 @@ import { Request } from 'express';
 
 interface AuthenticatedRequest extends Request {
   user: {
-    sub: number;
+    id: number;
     email: string;
     role: Role;
   };
@@ -81,7 +81,7 @@ export class AdminController {
     @Body() createUserDto: AdminCreateUserDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<AdminUserResponseDto> {
-    const adminId = req.user.sub;
+    const adminId = req.user.id;
     const ipAddress = req.ip || req.socket.remoteAddress;
     const userAgent = req.get('User-Agent');
 
@@ -157,23 +157,13 @@ export class AdminController {
     type: AdminUserResponseDto,
   })
   @ApiResponse({ status: 404, description: 'User not found' })
-  async getUserById(
+  getUserById(
     @Param('id', ParseIntPipe) id: number,
   ): Promise<AdminUserResponseDto> {
-    // This is a simplified implementation - in a real app, you'd want a dedicated getUserById service method
-    const result = await this.adminService.getAllUsers({ 
-      page: 1, 
-      limit: 1,
-      includeDeleted: true,
-    });
-    
-    // For now, we'll get the first user - in production, you'd filter by ID in the service
-    if (result.data.length === 0) {
-      throw new Error('User not found');
-    }
-    
-    return result.data[0];
-  }  @Put('users/:id')
+    return this.adminService.getUserById(id);
+  }
+
+  @Put('users/:id')
   @ApiOperation({
     summary: 'Update any user with admin privileges',
     description: 'Updates any user in the system, bypassing RBAC restrictions.',
@@ -192,7 +182,7 @@ export class AdminController {
     @Body() updateUserDto: AdminUpdateUserDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<AdminUserResponseDto> {
-    const adminId = req.user.sub;
+    const adminId = req.user.id;
     const ipAddress = req.ip || req.socket.remoteAddress;
     const userAgent = req.get('User-Agent');
 
@@ -227,7 +217,7 @@ export class AdminController {
     @Param('id', ParseIntPipe) id: number,
     @Req() req: AuthenticatedRequest,
   ): Promise<{ message: string }> {
-    const adminId = req.user.sub;
+    const adminId = req.user.id;
     const ipAddress = req.ip || req.socket.remoteAddress;
     const userAgent = req.get('User-Agent');
 
@@ -260,7 +250,7 @@ export class AdminController {
     @Body() operationDto: BulkUserOperationDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<{ message: string; affectedUsers: number }> {
-    const adminId = req.user.sub;
+    const adminId = req.user.id;
     const ipAddress = req.ip || req.socket.remoteAddress;
     const userAgent = req.get('User-Agent');
 
@@ -290,7 +280,7 @@ export class AdminController {
     @Body() teamDto: AdminTeamDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<AdminTeamResponseDto> {
-    const adminId = req.user.sub;
+    const adminId = req.user.id;
     const ipAddress = req.ip || req.socket.remoteAddress;
     const userAgent = req.get('User-Agent');
 
@@ -353,7 +343,7 @@ export class AdminController {
     @Param('id', ParseIntPipe) id: number,
     @Req() req: AuthenticatedRequest,
   ): Promise<{ message: string }> {
-    const adminId = req.user.sub;
+    const adminId = req.user.id;
     const ipAddress = req.ip || req.socket.remoteAddress;
     const userAgent = req.get('User-Agent');
 
@@ -383,7 +373,7 @@ export class AdminController {
     @Body() restructureDto: HierarchyRestructureDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<{ message: string }> {
-    const adminId = req.user.sub;
+    const adminId = req.user.id;
     const ipAddress = req.ip || req.socket.remoteAddress;
     const userAgent = req.get('User-Agent');
 
@@ -489,7 +479,7 @@ export class AdminController {
     @Body() overrideDto: AdminOverrideDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<{ message: string }> {
-    const adminId = req.user.sub;
+    const adminId = req.user.id;
     const ipAddress = req.ip || req.socket.remoteAddress;
     const userAgent = req.get('User-Agent');
 
@@ -521,11 +511,11 @@ export class AdminController {
       },
     },
   })
-  async healthCheck(): Promise<{
+  healthCheck(): {
     status: string;
     timestamp: string;
     version: string;
-  }> {
+  } {
     return {
       status: 'healthy',
       timestamp: new Date().toISOString(),

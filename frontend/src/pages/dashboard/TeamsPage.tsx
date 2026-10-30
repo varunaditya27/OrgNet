@@ -31,11 +31,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { useAdminUsersQuery } from '@/hooks/api/admin'
+import { useUsersQuery } from '@/hooks/api/users'
 import {
   useAddTeamMembersMutation,
   useCreateTeamMutation,
   useRemoveTeamMembersMutation,
+  useTeamQuery,
   useTeamsQuery,
 } from '@/hooks/api/teams'
 import type { Team, TeamMember, User } from '@/types'
@@ -66,7 +67,7 @@ const TeamsPage = () => {
   )
 
   const teamsQuery = useTeamsQuery(params)
-  const usersQuery = useAdminUsersQuery()
+  const usersQuery = useUsersQuery({ page: 1, limit: 100 })
 
   const handleSearch = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -79,7 +80,8 @@ const TeamsPage = () => {
 
   const teams = teamsQuery.data?.data ?? []
 
-  const managerOptions = (usersQuery.data?.data ?? []).filter((user) =>
+  const allUsers = usersQuery.data?.data ?? []
+  const managerOptions = allUsers.filter((user) =>
     ['ADMIN', 'MANAGER'].includes(user.role),
   )
 
@@ -201,16 +203,7 @@ const TeamsPage = () => {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {team.members.slice(0, 3).map((member) => (
-                              <Badge key={member.id} variant="secondary">
-                                {member.name}
-                              </Badge>
-                            ))}
-                            {team.members.length > 3 ? (
-                              <Badge variant="outline">+{team.members.length - 3} more</Badge>
-                            ) : null}
-                          </div>
+                          <Badge variant="secondary">{team.memberCount} members</Badge>
                         </TableCell>
                         <TableCell>
                           {new Date(team.createdAt).toLocaleDateString(undefined, {
@@ -235,7 +228,7 @@ const TeamsPage = () => {
       <CreateTeamDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        users={managerOptions}
+        users={allUsers}
         onCreated={() => {
           setCreateOpen(false)
           teamsQuery.refetch()
@@ -245,7 +238,7 @@ const TeamsPage = () => {
       {selectedTeam ? (
         <TeamDetailsDialog
           team={selectedTeam}
-          users={managerOptions}
+          users={allUsers}
           onClose={() => setSelectedTeam(null)}
           onUpdated={() => teamsQuery.refetch()}
         />
@@ -395,10 +388,11 @@ interface TeamDetailsDialogProps {
 const TeamDetailsDialog = ({ team, users, onClose, onUpdated }: TeamDetailsDialogProps) => {
   const addMembers = useAddTeamMembersMutation(team.id)
   const removeMembers = useRemoveTeamMembersMutation(team.id)
+  const members = useTeamQuery(team.id).data?.members ?? []
 
   const [selectedMembers, setSelectedMembers] = useState<number[]>([])
 
-  const nonMembers = users.filter((user) => !team.members.some((member) => member.id === user.id))
+  const nonMembers = users.filter((user) => !members.some((member) => member.id === user.id))
 
   const handleAddMembers = async () => {
     if (selectedMembers.length === 0) return
@@ -431,10 +425,10 @@ const TeamDetailsDialog = ({ team, users, onClose, onUpdated }: TeamDetailsDialo
             <h3 className="text-sm font-semibold text-muted-foreground">Members</h3>
             <ScrollArea className="mt-3 max-h-72 rounded-md border">
               <ul className="divide-y">
-                {team.members.length === 0 ? (
+                {members.length === 0 ? (
                   <li className="p-4 text-sm text-muted-foreground">No members yet.</li>
                 ) : (
-                  team.members.map((member) => (
+                  members.map((member) => (
                     <li key={member.id} className="flex items-center justify-between gap-4 p-4">
                       <div>
                         <p className="text-sm font-medium text-foreground">{member.name}</p>

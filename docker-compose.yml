@@ -1,0 +1,121 @@
+name: orgnet
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-orgnet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-orgnet}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5460}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # S3-compatible object storage for uploaded files; the bucket is created on first start.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.50
+    restart: unless-stopped
+    command: mini -dir=/data
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+      S3_BUCKET: ${S3_BUCKET:-orgnet}
+    ports:
+      # Browsers download files straight from here using signed links.
+      - "${S3_PORT:-8333}:8333"
+    volumes:
+      - seaweedfs-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9333/cluster/status >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # Catches mail so it can be read in a web page (the default mail target).
+  mailpit:
+    image: axllent/mailpit:v1.32.0
+    restart: unless-stopped
+    environment:
+      MP_DATABASE: /data/mailpit.db
+    ports:
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
+    volumes:
+      - mailpit-data:/data
+
+  # Optional (`docker compose --profile direct-mail up`): delivers straight to the recipient's mail
+  # server. Gmail rejects mail sent this way from home and most hosting IPs, so for real delivery
+  # use a relay instead (see SMTP_* in .env.example).
+  postfix:
+    image: boky/postfix:5.2.0-alpine
+    profiles: ["direct-mail"]
+    restart: unless-stopped
+    environment:
+      ALLOWED_SENDER_DOMAINS: ${MAIL_DOMAIN:-orgnet.local}
+      POSTFIX_myhostname: ${MAIL_HOSTNAME:-mail.orgnet.local}
+    volumes:
+      - postfix-data:/var/spool/postfix
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+    environment:
+      PORT: 3060
+      DATABASE_URL: postgresql://${POSTGRES_USER:-orgnet}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-orgnet}
+      DIRECT_URL: postgresql://${POSTGRES_USER:-orgnet}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-orgnet}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      FRONTEND_URL: http://${PUBLIC_HOST:-localhost}:${FRONTEND_PORT:-5160}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?set ADMIN_EMAIL in .env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+      R2_ENDPOINT: http://seaweedfs:8333
+      R2_PUBLIC_ENDPOINT: http://${PUBLIC_HOST:-localhost}:${S3_PORT:-8333}
+      R2_REGION: us-east-1
+      R2_BUCKET_NAME: ${S3_BUCKET:-orgnet}
+      R2_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      R2_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      R2_FORCE_PATH_STYLE: "true"
+      MAX_FILE_SIZE: "10485760"
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_IGNORE_TLS: ${SMTP_IGNORE_TLS:-true}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-OrgNet <noreply@orgnet.local>}
+    ports:
+      - "${BACKEND_PORT:-3060}:3060"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3060/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://${PUBLIC_HOST:-localhost}:${BACKEND_PORT:-3060}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-5160}:80"
+
+volumes:
+  postgres-data:
+  seaweedfs-data:
+  mailpit-data:
+  postfix-data:

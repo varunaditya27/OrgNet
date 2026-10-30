@@ -51,8 +51,8 @@ const uploadFileSchema = z.object({
     .custom<File>((value) => value instanceof File, {
       message: 'Select a file to upload',
     })
-    .refine((file) => (file?.size ?? 0) <= 25 * 1024 * 1024, {
-      message: 'File must be smaller than 25MB',
+    .refine((file) => (file?.size ?? 0) <= 10 * 1024 * 1024, {
+      message: 'File must be smaller than 10MB',
     }),
   description: z.string().max(200, 'Keep descriptions concise').optional(),
   allowedRole: z.enum(ROLES),
@@ -65,6 +65,7 @@ const FilesPage = () => {
   const [roleFilter, setRoleFilter] = useState<(typeof ROLES)[number] | 'ALL'>('ALL')
   const [page, setPage] = useState(1)
   const [uploadOpen, setUploadOpen] = useState(false)
+  const [fileToDelete, setFileToDelete] = useState<FileItem | null>(null)
 
   const params = useMemo(
     () => ({
@@ -258,8 +259,7 @@ const FilesPage = () => {
                               variant="ghost"
                               size="sm"
                               className="text-destructive hover:text-destructive"
-                              onClick={() => deleteMutation.mutateAsync(file.id)}
-                              disabled={deleteMutation.isPending}
+                              onClick={() => setFileToDelete(file)}
                             >
                               Delete
                             </Button>
@@ -292,6 +292,41 @@ const FilesPage = () => {
         }}
         uploadMutation={uploadMutation}
       />
+
+      <Dialog open={Boolean(fileToDelete)} onOpenChange={(open) => !open && setFileToDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete file</DialogTitle>
+            <DialogDescription>
+              The file will no longer be available to anyone in the organization.
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            File: <span className="font-medium text-foreground">{fileToDelete?.fileName}</span>
+          </p>
+          <DialogFooter className="pt-2">
+            <Button type="button" variant="outline" onClick={() => setFileToDelete(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={async () => {
+                if (!fileToDelete) return
+                try {
+                  await deleteMutation.mutateAsync(fileToDelete.id)
+                  setFileToDelete(null)
+                } catch {
+                  // Error already surfaced by the mutation's toast
+                }
+              }}
+            >
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -348,7 +383,7 @@ const UploadFileDialog = ({ open, onOpenChange, onSubmitted, uploadMutation }: U
                       }}
                     />
                   </FormControl>
-                  <FormDescription>Maximum size 25MB.</FormDescription>
+                  <FormDescription>Maximum size 10MB.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

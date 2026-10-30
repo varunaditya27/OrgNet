@@ -7,15 +7,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 @Module({
   imports: [PrismaModule],
   controllers: [AdminController],
-  providers: [
-    AdminService,
-    AdminGuard,
-    AdminOverrideGuard,
-  ],
-  exports: [
-    AdminService,
-    AdminGuard,
-    AdminOverrideGuard,
-  ],
+  providers: [AdminService, AdminGuard, AdminOverrideGuard],
+  exports: [AdminService, AdminGuard, AdminOverrideGuard],
 })
 export class AdminModule {}

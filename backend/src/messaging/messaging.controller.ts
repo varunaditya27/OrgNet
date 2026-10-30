@@ -13,7 +13,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { MessagingService } from './messaging.service';
-import { 
+import {
   JwtAuthGuard,
   CommunicationGuard,
   User,
@@ -52,7 +52,9 @@ export class MessagingController {
 
   @Get('conversations')
   @HttpCode(HttpStatus.OK)
-  async getConversations(@User('id') userId: number): Promise<ConversationDto[]> {
+  async getConversations(
+    @User('id') userId: number,
+  ): Promise<ConversationDto[]> {
     return this.messagingService.getConversations(userId);
   }
 
@@ -87,7 +89,11 @@ export class MessagingController {
 
   @Delete('messages/:messageId')
   @HttpCode(HttpStatus.OK)
-  @RequireResourceAccess('message', [ResourcePermission.OWNER, ResourcePermission.ADMIN_OVERRIDE], { ownerField: 'senderId' })
+  @RequireResourceAccess(
+    'message',
+    [ResourcePermission.OWNER, ResourcePermission.ADMIN_OVERRIDE],
+    { ownerField: 'senderId' },
+  )
   async deleteMessage(
     @Param('messageId', ParseIntPipe) messageId: number,
     @User('id') userId: number,
@@ -139,7 +145,11 @@ export class MessagingController {
     @Body() addGroupMembersDto: AddGroupMembersDto,
     @User('id') userId: number,
   ): Promise<GroupResponseDto> {
-    return this.messagingService.addGroupMembers(groupId, addGroupMembersDto, userId);
+    return this.messagingService.addGroupMembers(
+      groupId,
+      addGroupMembersDto,
+      userId,
+    );
   }
 
   @Delete('groups/:groupId/members')
@@ -149,6 +159,10 @@ export class MessagingController {
     @Body() removeGroupMembersDto: RemoveGroupMembersDto,
     @User('id') userId: number,
   ): Promise<GroupResponseDto> {
-    return this.messagingService.removeGroupMembers(groupId, removeGroupMembersDto, userId);
+    return this.messagingService.removeGroupMembers(
+      groupId,
+      removeGroupMembersDto,
+      userId,
+    );
   }
 }

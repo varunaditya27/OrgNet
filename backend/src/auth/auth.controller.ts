@@ -9,8 +9,16 @@ import {
   Request,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto, AuthResponseDto, UserResponseDto } from './dto';
+import {
+  RegisterDto,
+  LoginDto,
+  AuthResponseDto,
+  UserResponseDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
+} from './dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import type { AuthenticatedRequest } from '../common/types';
 
 @Controller('auth')
 export class AuthController {
@@ -28,16 +36,32 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(
+    @Body() forgotPasswordDto: ForgotPasswordDto,
+  ): Promise<{ message: string }> {
+    return this.authService.forgotPassword(forgotPasswordDto);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(
+    @Body() resetPasswordDto: ResetPasswordDto,
+  ): Promise<{ message: string }> {
+    return this.authService.resetPassword(resetPasswordDto);
+  }
+
   @Get('profile')
   @UseGuards(JwtAuthGuard)
-  async getProfile(@Request() req: any): Promise<UserResponseDto> {
+  getProfile(@Request() req: AuthenticatedRequest): UserResponseDto {
     return req.user;
   }
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async logout(): Promise<{ message: string }> {
+  logout(): { message: string } {
     // For JWT, logout is typically handled on the client side
     // by removing the token from storage
     return { message: 'Logged out successfully' };

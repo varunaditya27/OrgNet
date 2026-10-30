@@ -2,8 +2,20 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { toast } from 'sonner'
 
-import { fetchProfile, forgotPassword, login, logout, register } from '@/api/auth'
-import type { ForgotPasswordPayload, LoginPayload, RegisterPayload } from '@/api/auth'
+import {
+  fetchProfile,
+  forgotPassword,
+  login,
+  logout,
+  register,
+  resetPassword,
+} from '@/api/auth'
+import type {
+  ForgotPasswordPayload,
+  LoginPayload,
+  RegisterPayload,
+  ResetPasswordPayload,
+} from '@/api/auth'
 import { getErrorMessage } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
 
@@ -70,7 +82,19 @@ export const useForgotPasswordMutation = () => {
   return useMutation({
     mutationFn: (payload: ForgotPasswordPayload) => forgotPassword(payload),
     onSuccess: (data) => {
-      toast.success(data.message ?? 'Password reset instructions sent')
+      toast.success(data.message)
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
+    },
+  })
+}
+
+export const useResetPasswordMutation = () => {
+  return useMutation({
+    mutationFn: (payload: ResetPasswordPayload) => resetPassword(payload),
+    onSuccess: (data) => {
+      toast.success(data.message)
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))

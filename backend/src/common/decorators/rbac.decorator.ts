@@ -1,6 +1,12 @@
 import { SetMetadata } from '@nestjs/common';
-import { HierarchyPermission, RBACConfig } from '../guards/tree-based-rbac.guard';
-import { ResourcePermission, ResourceConfig } from '../guards/resource-access.guard';
+import {
+  HierarchyPermission,
+  RBACConfig,
+} from '../guards/tree-based-rbac.guard';
+import {
+  ResourcePermission,
+  ResourceConfig,
+} from '../guards/resource-access.guard';
 
 // RBAC Decorator Keys
 export const RBAC_KEY = 'rbac';
@@ -56,43 +62,55 @@ export const RequireCommunicationPermission = () => {
 /**
  * Allow access to own data only
  */
-export const AllowSelfOnly = () => 
+export const AllowSelfOnly = () =>
   RequireHierarchyAccess([HierarchyPermission.SELF]);
 
 /**
  * Allow access to direct subordinates (for managers)
  */
-export const AllowDirectSubordinates = () => 
-  RequireHierarchyAccess([HierarchyPermission.SELF, HierarchyPermission.DIRECT_SUBORDINATES]);
+export const AllowDirectSubordinates = () =>
+  RequireHierarchyAccess([
+    HierarchyPermission.SELF,
+    HierarchyPermission.DIRECT_SUBORDINATES,
+  ]);
 
 /**
  * Allow access to entire subordinate tree (for managers)
  */
-export const AllowAllSubordinates = () => 
-  RequireHierarchyAccess([HierarchyPermission.SELF, HierarchyPermission.ALL_SUBORDINATES]);
+export const AllowAllSubordinates = () =>
+  RequireHierarchyAccess([
+    HierarchyPermission.SELF,
+    HierarchyPermission.ALL_SUBORDINATES,
+  ]);
 
 /**
  * Allow access to peers (same level in hierarchy)
  */
-export const AllowPeers = () => 
+export const AllowPeers = () =>
   RequireHierarchyAccess([HierarchyPermission.SELF, HierarchyPermission.PEERS]);
 
 /**
  * Allow access to direct superior
  */
-export const AllowDirectSuperior = () => 
-  RequireHierarchyAccess([HierarchyPermission.SELF, HierarchyPermission.DIRECT_SUPERIOR]);
+export const AllowDirectSuperior = () =>
+  RequireHierarchyAccess([
+    HierarchyPermission.SELF,
+    HierarchyPermission.DIRECT_SUPERIOR,
+  ]);
 
 /**
  * Allow access to team members
  */
-export const AllowTeamMembers = () => 
-  RequireHierarchyAccess([HierarchyPermission.SELF, HierarchyPermission.TEAM_MEMBERS]);
+export const AllowTeamMembers = () =>
+  RequireHierarchyAccess([
+    HierarchyPermission.SELF,
+    HierarchyPermission.TEAM_MEMBERS,
+  ]);
 
 /**
  * Manager-level access (self + direct subordinates + peers)
  */
-export const ManagerAccess = () => 
+export const ManagerAccess = () =>
   RequireHierarchyAccess([
     HierarchyPermission.SELF,
     HierarchyPermission.DIRECT_SUBORDINATES,
@@ -103,7 +121,7 @@ export const ManagerAccess = () =>
 /**
  * Employee-level access (self + immediate superior + peers)
  */
-export const EmployeeAccess = () => 
+export const EmployeeAccess = () =>
   RequireHierarchyAccess([
     HierarchyPermission.SELF,
     HierarchyPermission.DIRECT_SUPERIOR,
@@ -113,7 +131,7 @@ export const EmployeeAccess = () =>
 /**
  * Admin access (full access)
  */
-export const AdminAccess = () => 
+export const AdminAccess = () =>
   RequireHierarchyAccess([HierarchyPermission.ALL_USERS]);
 
 // Resource-specific decorators
@@ -179,10 +197,11 @@ export const UserProfileAccess = () => [
  */
 export const MessageAccess = () => [
   RequireCommunicationPermission(),
-  RequireResourceAccess('message', [
-    ResourcePermission.OWNER,
-    ResourcePermission.ADMIN_OVERRIDE,
-  ], { ownerField: 'senderId' }),
+  RequireResourceAccess(
+    'message',
+    [ResourcePermission.OWNER, ResourcePermission.ADMIN_OVERRIDE],
+    { ownerField: 'senderId' },
+  ),
 ];
 
 /**

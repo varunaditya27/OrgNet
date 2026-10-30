@@ -39,8 +39,9 @@ const messageSchema = z.object({
 type MessageFormValues = z.infer<typeof messageSchema>
 
 const getConversationKey = (conversation: ConversationSummary): number | null => {
+  // Negative so a group id can never equal a user id.
   if (conversation.isGroup) {
-    return conversation.groupId ?? null
+    return conversation.groupId ? -conversation.groupId : null
   }
   return conversation.participantId ?? null
 }
@@ -465,6 +466,7 @@ const TypingIndicator = ({
 
 const MessageBubble = ({ message, currentUserId }: { message: Message; currentUserId?: number }) => {
   const isOwn = message.senderId === currentUserId
+  const isSeen = useMessagingStore((state) => Boolean(state.seenMessages[message.id]))
   return (
     <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
       <div
@@ -479,6 +481,7 @@ const MessageBubble = ({ message, currentUserId }: { message: Message; currentUs
             hour: '2-digit',
             minute: '2-digit',
           })}
+          {isOwn && isSeen ? ' · Seen' : null}
         </span>
       </div>
     </div>
@@ -526,13 +529,16 @@ const MessageComposer = ({ conversation, onMessageSent }: MessageComposerProps) 
       stopTyping(typingTarget)
       setHasNotifiedTyping(false)
     }
-
-    return () => {
-      if (hasNotifiedTyping && typingTarget) {
-        stopTyping(typingTarget)
-      }
-    }
   }, [contentValue, hasNotifiedTyping, isConnected, startTyping, stopTyping, typingTarget])
+
+  // Runs only when the conversation changes or the composer unmounts, not on every keystroke.
+  useEffect(() => {
+    if (!typingTarget) return
+    return () => {
+      stopTyping(typingTarget)
+      setHasNotifiedTyping(false)
+    }
+  }, [stopTyping, typingTarget])
 
   const onSubmit = async (values: MessageFormValues) => {
     const payload: { content: string; receiverId?: number; groupId?: number } = {
@@ -597,6 +603,12 @@ const MessageComposer = ({ conversation, onMessageSent }: MessageComposerProps) 
                   autoComplete="off"
                   rows={3}
                   {...field}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                      event.preventDefault()
+                      void form.handleSubmit(onSubmit)()
+                    }
+                  }}
                 />
               </FormControl>
               <FormMessage />

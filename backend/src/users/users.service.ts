@@ -15,13 +15,35 @@ import {
   UserTeamInfoDto,
 } from './dto';
 import { Role } from '../common/enums';
+import type { HierarchyUser } from '../common/types';
+import type { Prisma, User } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createUserDto: CreateUserDto): Promise<UserResponseDto> {
-    const { name, email, password, role = Role.EMPLOYEE, parentId, isActive = true } = createUserDto;
+  async create(
+    createUserDto: CreateUserDto,
+    requestingRole: Role,
+  ): Promise<UserResponseDto> {
+    const {
+      name,
+      email,
+      password,
+      role = Role.EMPLOYEE,
+      parentId,
+      isActive = true,
+    } = createUserDto;
+
+    if (
+      requestingRole !== Role.ADMIN &&
+      role !== Role.EMPLOYEE &&
+      role !== Role.INTERN
+    ) {
+      throw new ForbiddenException(
+        'Only administrators can create admin or manager accounts',
+      );
+    }
 
     // Check if user already exists
     const existingUser = await this.prisma.user.findUnique({
@@ -48,7 +70,7 @@ export class UsersService {
       }
 
       // Validate that parent can supervise this role
-      await this.validateHierarchyRules(parent.role, role);
+      this.validateHierarchyRules(parent.role, role);
     }
 
     // Hash password
@@ -61,7 +83,7 @@ export class UsersService {
         name,
         email,
         password: hashedPassword,
-        role: role as any,
+        role,
         parentId,
         isActive,
       },
@@ -75,10 +97,15 @@ export class UsersService {
     limit: number = 10,
     role?: Role,
     isActive?: boolean,
-  ): Promise<{ users: UserResponseDto[]; total: number; page: number; limit: number }> {
+  ): Promise<{
+    users: UserResponseDto[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
     const skip = (page - 1) * limit;
-    
-    const where: any = {};
+
+    const where: Prisma.UserWhereInput = {};
     if (role) where.role = role;
     if (isActive !== undefined) where.isActive = isActive;
 
@@ -93,7 +120,7 @@ export class UsersService {
     ]);
 
     return {
-      users: users.map(user => this.mapToUserResponse(user)),
+      users: users.map((user) => this.mapToUserResponse(user)),
       total,
       page,
       limit,
@@ -124,7 +151,11 @@ export class UsersService {
     return this.mapToUserResponse(user);
   }
 
-  async update(id: number, updateUserDto: UpdateUserDto, requestingUserId: number): Promise<UserResponseDto> {
+  async update(
+    id: number,
+    updateUserDto: UpdateUserDto,
+    requestingUserId: number,
+  ): Promise<UserResponseDto> {
     const existingUser = await this.prisma.user.findUnique({
       where: { id },
     });
@@ -142,7 +173,20 @@ export class UsersService {
     }
 
     // Check if requesting user has permission to update this user
-    await this.validateUpdatePermission(requestingUser, existingUser);
+    this.validateUpdatePermission(requestingUser, existingUser);
+
+    const changesPrivilegedField =
+      (updateUserDto.role !== undefined &&
+        updateUserDto.role !== existingUser.role) ||
+      (updateUserDto.parentId !== undefined &&
+        updateUserDto.parentId !== existingUser.parentId) ||
+      (updateUserDto.isActive !== undefined &&
+        updateUserDto.isActive !== existingUser.isActive);
+    if (requestingUser.role !== Role.ADMIN && changesPrivilegedField) {
+      throw new ForbiddenException(
+        'Only administrators can change role, reporting line or account status',
+      );
+    }
 
     // Validate email uniqueness if email is being updated
     if (updateUserDto.email && updateUserDto.email !== existingUser.email) {
@@ -174,14 +218,19 @@ export class UsersService {
         }
 
         // Check if the new parent would create a circular reference
-        const wouldCreateCircle = await this.checkCircularReference(id, updateUserDto.parentId);
+        const wouldCreateCircle = await this.checkCircularReference(
+          id,
+          updateUserDto.parentId,
+        );
         if (wouldCreateCircle) {
-          throw new BadRequestException('This parent assignment would create a circular reference');
+          throw new BadRequestException(
+            'This parent assignment would create a circular reference',
+          );
         }
 
         // Validate hierarchy rules if role is being updated too
         const newRole = updateUserDto.role || existingUser.role;
-        await this.validateHierarchyRules(parent.role, newRole as Role);
+        this.validateHierarchyRules(parent.role, newRole);
       }
     }
 
@@ -194,7 +243,10 @@ export class UsersService {
     return this.mapToUserResponse(updatedUser);
   }
 
-  async remove(id: number, requestingUserId: number): Promise<{ message: string }> {
+  async remove(
+    id: number,
+    requestingUserId: number,
+  ): Promise<{ message: string }> {
     const existingUser = await this.prisma.user.findUnique({
       where: { id },
       include: { subordinates: true },
@@ -214,12 +266,16 @@ export class UsersService {
 
     // Check permissions
     if (requestingUser.role !== Role.ADMIN && requestingUser.id !== id) {
-      throw new ForbiddenException('You can only delete your own account or be an admin');
+      throw new ForbiddenException(
+        'You can only delete your own account or be an admin',
+      );
     }
 
     // Don't allow deletion if user has subordinates
     if (existingUser.subordinates.length > 0) {
-      throw new BadRequestException('Cannot delete user with subordinates. Please reassign subordinates first.');
+      throw new BadRequestException(
+        'Cannot delete user with subordinates. Please reassign subordinates first.',
+      );
     }
 
     // Soft delete by setting isActive to false instead of hard delete
@@ -250,7 +306,7 @@ export class UsersService {
     return {
       ...this.mapToUserResponse(user),
       parent: user.parent ? this.mapToUserResponse(user.parent) : null,
-      subordinates: user.subordinates.map(sub => this.mapToUserResponse(sub)),
+      subordinates: user.subordinates.map((sub) => this.mapToUserResponse(sub)),
     };
   }
 
@@ -282,7 +338,7 @@ export class UsersService {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
 
-    return user.subordinates.map(sub => this.mapToUserResponse(sub));
+    return user.subordinates.map((sub) => this.mapToUserResponse(sub));
   }
 
   async getTeamInfo(id: number): Promise<UserTeamInfoDto> {
@@ -308,7 +364,11 @@ export class UsersService {
     };
   }
 
-  async changePassword(id: number, oldPassword: string, newPassword: string): Promise<{ message: string }> {
+  async changePassword(
+    id: number,
+    oldPassword: string,
+    newPassword: string,
+  ): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({
       where: { id },
     });
@@ -337,7 +397,7 @@ export class UsersService {
   }
 
   // Helper methods
-  private async validateHierarchyRules(parentRole: string, childRole: Role): Promise<void> {
+  private validateHierarchyRules(parentRole: string, childRole: Role): void {
     // Define valid parent-child role relationships
     const validRelationships: Record<Role, Role[]> = {
       [Role.ADMIN]: [Role.MANAGER, Role.EMPLOYEE, Role.INTERN],
@@ -348,12 +408,15 @@ export class UsersService {
 
     if (!validRelationships[parentRole as Role]?.includes(childRole)) {
       throw new BadRequestException(
-        `Invalid hierarchy: ${parentRole} cannot supervise ${childRole}`
+        `Invalid hierarchy: ${parentRole} cannot supervise ${childRole}`,
       );
     }
   }
 
-  private async validateUpdatePermission(requestingUser: any, targetUser: any): Promise<void> {
+  private validateUpdatePermission(
+    requestingUser: HierarchyUser,
+    targetUser: HierarchyUser,
+  ): void {
     // Admin can update anyone
     if (requestingUser.role === Role.ADMIN) {
       return;
@@ -365,14 +428,22 @@ export class UsersService {
     }
 
     // Managers can update their direct subordinates
-    if (requestingUser.role === Role.MANAGER && targetUser.parentId === requestingUser.id) {
+    if (
+      requestingUser.role === Role.MANAGER &&
+      targetUser.parentId === requestingUser.id
+    ) {
       return;
     }
 
-    throw new ForbiddenException('You do not have permission to update this user');
+    throw new ForbiddenException(
+      'You do not have permission to update this user',
+    );
   }
 
-  private async checkCircularReference(userId: number, newParentId: number): Promise<boolean> {
+  private async checkCircularReference(
+    userId: number,
+    newParentId: number,
+  ): Promise<boolean> {
     let currentId: number | null = newParentId;
     const visited = new Set<number>();
 
@@ -382,11 +453,12 @@ export class UsersService {
       }
 
       visited.add(currentId);
-      
-      const parent = await this.prisma.user.findUnique({
-        where: { id: currentId },
-        select: { parentId: true },
-      });
+
+      const parent: { parentId: number | null } | null =
+        await this.prisma.user.findUnique({
+          where: { id: currentId },
+          select: { parentId: true },
+        });
 
       currentId = parent?.parentId || null;
     }
@@ -426,7 +498,7 @@ export class UsersService {
         },
         select: { id: true },
       });
-      messageableUserIds = allUsers.map(u => u.id);
+      messageableUserIds = allUsers.map((u) => u.id);
     } else if (currentUser.role === Role.MANAGER) {
       // Managers can message:
       // 1. All subordinates (direct and indirect)
@@ -440,12 +512,12 @@ export class UsersService {
         )
         SELECT id FROM subordinate_tree
       `;
-      
+
       // 2. Immediate superior
       if (currentUser.parentId) {
         messageableUserIds.push(currentUser.parentId);
       }
-      
+
       // 3. Peers (same parent)
       if (currentUser.parentId) {
         const peers = await this.prisma.user.findMany({
@@ -456,17 +528,17 @@ export class UsersService {
           },
           select: { id: true },
         });
-        messageableUserIds.push(...peers.map(p => p.id));
+        messageableUserIds.push(...peers.map((p) => p.id));
       }
-      
-      messageableUserIds.push(...subordinates.map(s => s.id));
+
+      messageableUserIds.push(...subordinates.map((s) => s.id));
     } else {
       // EMPLOYEE and INTERN can message:
       // 1. Immediate superior
       if (currentUser.parentId) {
         messageableUserIds.push(currentUser.parentId);
       }
-      
+
       // 2. Peers (same parent)
       if (currentUser.parentId) {
         const peers = await this.prisma.user.findMany({
@@ -477,13 +549,13 @@ export class UsersService {
           },
           select: { id: true },
         });
-        messageableUserIds.push(...peers.map(p => p.id));
+        messageableUserIds.push(...peers.map((p) => p.id));
       }
     }
 
     // Remove duplicates and fetch full user details
     const uniqueUserIds = [...new Set(messageableUserIds)];
-    
+
     if (uniqueUserIds.length === 0) {
       return [];
     }
@@ -493,21 +565,18 @@ export class UsersService {
         id: { in: uniqueUserIds },
         isActive: true,
       },
-      orderBy: [
-        { role: 'asc' },
-        { name: 'asc' },
-      ],
+      orderBy: [{ role: 'asc' }, { name: 'asc' }],
     });
 
-    return users.map(user => this.mapToUserResponse(user));
+    return users.map((user) => this.mapToUserResponse(user));
   }
 
-  private mapToUserResponse(user: any): UserResponseDto {
+  private mapToUserResponse(user: User): UserResponseDto {
     return {
       id: user.id,
       name: user.name,
       email: user.email,
-      role: user.role as Role,
+      role: user.role,
       isActive: user.isActive,
       lastLoginAt: user.lastLoginAt,
       parentId: user.parentId,

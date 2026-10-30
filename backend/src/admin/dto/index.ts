@@ -1,4 +1,15 @@
-import { IsString, IsNotEmpty, IsOptional, IsArray, IsInt, Min, IsNumber, IsBoolean, IsEnum, IsDateString } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsArray,
+  IsInt,
+  Min,
+  IsNumber,
+  IsBoolean,
+  IsEnum,
+  IsDateString,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { Role } from '../../common/enums';
 
@@ -243,13 +254,13 @@ export class AdminUserResponseDto {
   email: string;
   role: Role;
   isActive: boolean;
-  lastLoginAt?: Date;
-  parentId?: number;
+  lastLoginAt?: Date | null;
+  parentId?: number | null;
   parent?: {
     id: number;
     name: string;
     role: Role;
-  };
+  } | null;
   subordinatesCount: number;
   teamsManaged: number;
   teamMemberships: number;
@@ -260,7 +271,7 @@ export class AdminUserResponseDto {
 export class AdminTeamResponseDto {
   id: number;
   name: string;
-  description?: string;
+  description?: string | null;
   managerId: number;
   manager: {
     id: number;
