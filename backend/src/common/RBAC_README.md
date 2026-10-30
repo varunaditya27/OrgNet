@@ -13,6 +13,14 @@ The OrgNet RBAC system provides comprehensive tree-based access control that enf
 3. **ResourceAccessGuard**: General resource ownership and access control
 4. **RBAC Decorators**: Easy-to-use decorators for applying guards
 
+### Shared Types
+
+`common/types.ts` defines `HierarchyUser` (the id, role and parent a permission check needs) and `AuthenticatedRequest` (an Express request carrying the authenticated user). `Role` in `common/enums.ts` re-exports Prisma's `Role`, so one enum is used everywhere. The authenticated user on `req.user` has an `id` field (not `sub`; `sub` exists only inside the JWT).
+
+### Privilege Rules
+
+Creating ADMIN or MANAGER accounts and changing a user's role, reporting line or active status are admin-only operations, enforced in the users service, so they cannot be reached through the hierarchy guards.
+
 ### Hierarchy Rules
 
 ```

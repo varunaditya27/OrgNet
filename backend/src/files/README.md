@@ -71,7 +71,7 @@ Get paginated list of accessible files.
 - `page`: Page number (default: 1)
 - `limit`: Items per page (default: 20, max: 100)
 - `allowedRole`: Filter by minimum role requirement
-- `search`: Search in file names and descriptions
+- `search`: Search in file names and descriptions. Search narrows the results you are already allowed to see; it never reveals files above your role
 - `mimeType`: Filter by MIME type
 - `ownerId`: Filter by file owner (requires appropriate permissions)
 
@@ -93,6 +93,7 @@ curl -H "Authorization: Bearer <jwt_token>" \
       "description": "Important company document",
       "allowedRole": "MANAGER",
       "downloadCount": 5,
+      "isActive": true,
       "createdAt": "2025-01-01T10:00:00.000Z",
       "updatedAt": "2025-01-01T10:00:00.000Z",
       "owner": {
@@ -237,21 +238,28 @@ ADMIN (Level 4)
 
 ### Environment Variables
 
-Required environment variables for Cloudflare R2:
+Any S3-compatible storage works (the variable names say R2, but they are generic). Example for Cloudflare R2:
 
 ```bash
 # Cloudflare R2 Configuration
-R2_ACCOUNT_ID="your-cloudflare-account-id"
 R2_ACCESS_KEY_ID="your-r2-access-key-id"
 R2_SECRET_ACCESS_KEY="your-r2-secret-access-key"
 R2_BUCKET_NAME="orgnet-files"
 R2_REGION="auto"
 R2_ENDPOINT="https://your-account-id.r2.cloudflarestorage.com"
 
+# Optional
+R2_PUBLIC_ENDPOINT=""      # address used to sign download links when browsers reach storage differently than the server (Docker)
+R2_FORCE_PATH_STYLE="true" # for local S3 servers that need path-style URLs (SeaweedFS and most others)
+
 # File Upload Configuration
 MAX_FILE_SIZE="10485760" # 10MB in bytes
 ALLOWED_FILE_TYPES="image/jpeg,image/png,image/gif,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 ```
+
+### Local Storage (no cloud account)
+
+The Docker Compose bundle at the repository root runs [SeaweedFS](https://github.com/seaweedfs/seaweedfs) as the S3 server and creates the bucket automatically. It sets `R2_ENDPOINT=http://seaweedfs:8333`, `R2_PUBLIC_ENDPOINT=http://localhost:8333` (the address the browser downloads from), and `R2_FORCE_PATH_STYLE=true`. Download links are signed for the public address because a signature is only valid for the host name it was made for.
 
 ### File Validation
 

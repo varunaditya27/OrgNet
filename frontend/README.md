@@ -54,7 +54,7 @@ npm install
 
 ### Environment Variables
 
-Create a `.env` file (or `.env.local`) at the project root:
+Copy `.env.example` to `.env` (or `.env.local`) at the project root:
 
 ```ini
 VITE_API_BASE_URL=http://localhost:3000
@@ -87,7 +87,8 @@ VITE_API_BASE_URL=http://localhost:3000
   - Conversation refresh on new messages (REST + socket invalidation)
   - Typing indicators with auto-expiry to prevent ghost states
   - Online presence list and delta updates per user
-  - Read receipts and automatic unread counter refresh
+  - Read receipts: a sender's message shows "Seen" once the recipient opens it (kept for the current session only)
+  - Direct chats and groups appear in one conversation list; Enter sends, Shift+Enter adds a line
   - Graceful fallback to REST API when websocket is unavailable
 - All realtime state is centralized in `src/store/messaging-store.ts` and surfaced through `MessagingProvider` + `useMessaging`.
 
@@ -97,7 +98,8 @@ VITE_API_BASE_URL=http://localhost:3000
 - **Users:** Directory, filters, hierarchy view, RBAC-aware bulk actions.
 - **Teams:** Creation dialogs, membership management, manager filtering.
 - **Messaging:** Real-time chat hub with presence, search, conversation filters.
-- **Files:** Secure document workspace with RBAC-based access rules.
+- **Files:** Secure document workspace with RBAC-based access rules, a 10 MB upload limit (matching the backend default), and a confirmation before deleting.
+- **Authentication:** Sign in, register (always as an employee), forgot password, and reset password pages. The reset page reads the `token` from the emailed link.
 - **Admin & Audit:** Elevated tooling for overrides, audits, and compliance logs.
 
 Each page is built with consistent patterns: skeleton states, empty states, optimistic toasts, and error boundaries.
@@ -129,8 +131,8 @@ npm run build
 
 - `npm run build` outputs static assets in `dist/` ready for any CDN or static host.
 - Ensure backend is reachable from the deployed URL (configure CORS + Socket.IO origins).
-- Set `VITE_API_BASE_URL` at build time (Netlify/Vercel environment variables, Docker ARG, etc.).
-- For self-hosted environments, serve `dist/` via Nginx or the NestJS static assets module.
+- Set `VITE_API_BASE_URL` at build time (Netlify/Vercel environment variables, Docker ARG, etc.). Vite bakes it into the bundle, so it must be the address the **browser** uses to reach the API.
+- The included `Dockerfile` builds the app and serves `dist/` with nginx (`nginx.conf` falls back to `index.html` so deep links such as `/reset-password` work). The root `docker-compose.yml` passes the build argument for you; see the root README.
 
 ## 🛠 Troubleshooting
 

@@ -45,7 +45,7 @@ Send a message to a user or group.
 ```
 GET /messaging/conversations
 ```
-Retrieve all conversations for the authenticated user.
+Retrieve the authenticated user's **direct** conversations. Groups are not included here; list them with `GET /messaging/groups` (the web app merges both lists).
 
 #### Get Messages
 ```
@@ -183,6 +183,7 @@ Remove members from a group.
   updatedAt: Date;
   members: UserInfo[];
   messageCount?: number;
+  lastMessage?: { id: number; content: string; timestamp: Date; senderId: number } | null; // from GET /messaging/groups
 }
 ```
 

@@ -46,7 +46,7 @@ The Admin Module provides comprehensive administrative capabilities for the OrgN
 ```
 POST   /admin/users                    # Create user with admin privileges
 GET    /admin/users                    # Get all users (with filtering)
-GET    /admin/users/:id                # Get user by ID
+GET    /admin/users/:id                # Get user by ID (404 if it does not exist)
 PUT    /admin/users/:id                # Update any user
 DELETE /admin/users/:id                # Hard delete user
 POST   /admin/users/bulk-operation     # Bulk user operations

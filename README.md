@@ -16,8 +16,8 @@ OrgNet is a world-class, enterprise-grade collaboration suite for modern organiz
 - **🧩 Modular Architecture**: Clean separation of concerns—auth, users, teams, messaging, files, admin, audit—all as independent, composable modules.
 - **🕵️‍♂️ Audit & Compliance**: Every admin/override action is logged with metadata, IP, and user agent for full traceability and compliance.
 - **✨ Modern UI/UX**: shadcn-inspired primitives, dark mode, command palette, and responsive layouts for a delightful user experience.
-- **🛠️ Production Discipline**: Strict TypeScript, ESLint, CI-friendly scripts, and Docker/Kubernetes-ready deployment.
-- **🛡️ Scalable & Secure**: JWT authentication, S3-compatible file storage, input validation, SQL injection protection, soft delete, and more.
+- **🛠️ Production Discipline**: Strict TypeScript, ESLint, CI-friendly scripts, and a one-command Docker Compose bundle.
+- **🛡️ Scalable & Secure**: JWT authentication, email password reset, S3-compatible file storage, input validation, SQL injection protection, soft delete, and more.
 
 ---
 
@@ -85,12 +85,39 @@ ADMIN (Full Access)
 
 ## 🧰 Tech Stack
 
-- **Backend:** NestJS (TypeScript), Prisma, PostgreSQL, Socket.IO, S3-compatible storage
+- **Backend:** NestJS (TypeScript), Prisma, PostgreSQL, Socket.IO, S3-compatible storage, Nodemailer
 - **Frontend:** React 19, Vite, Zustand, React Query, Tailwind CSS, shadcn/ui, Radix UI, Socket.IO client
-- **DevOps:** Docker, Kubernetes-ready, CI-friendly scripts
+- **DevOps:** Docker Compose (PostgreSQL, SeaweedFS, Mailpit, backend, frontend), CI-friendly scripts
 
 ---
 
+
+---
+
+## 🐳 Run Everything with Docker Compose
+
+One command starts the frontend, backend, PostgreSQL, S3-compatible file storage (SeaweedFS) and a mail catcher (Mailpit). Migrations and the first admin account are created automatically.
+
+```bash
+$ cp .env.example .env     # then set POSTGRES_PASSWORD, JWT_SECRET, ADMIN_PASSWORD and S3_SECRET_KEY
+$ docker compose up --build
+```
+
+| What | Where |
+|---|---|
+| App | http://localhost:5160 |
+| API | http://localhost:3060 |
+| PostgreSQL | localhost:5460 |
+| Mail catcher (every email the app sends) | http://localhost:8025 |
+
+Sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`. Ports and the host name are variables in `.env`; set `PUBLIC_HOST` if the app is opened from another machine.
+
+- Add `-d` to run in the background, and `docker compose logs -f backend` to follow logs.
+- `docker compose down` stops everything and keeps your data; `docker compose down -v` also deletes the database, files and caught mail.
+- Files are stored in SeaweedFS (an S3-compatible server, port `S3_PORT`). Download links are signed for `PUBLIC_HOST`, so the browser must be able to reach that host on `S3_PORT`.
+- Services: `postgres`, `seaweedfs`, `mailpit`, `backend`, `frontend`, plus an optional `postfix` (`--profile direct-mail`).
+
+**Email:** by default every email is caught by Mailpit, so password-reset links appear at http://localhost:8025 and nothing leaves your machine. To send real email, set `SMTP_*` in `.env` to a provider's SMTP server (see `.env.example`). Gmail rejects mail sent directly from home and most hosting IPs, so a relay is needed for delivery to Gmail.
 
 ---
 
@@ -113,14 +140,19 @@ $ npm install
 
 ### 2. Environment Setup
 - Copy `.env.example` to `.env` in both `backend/` and `frontend/`.
-- Set required variables (see module READMEs for details).
+- Set required variables: `DATABASE_URL`, `DIRECT_URL` and `JWT_SECRET` are mandatory (the server will not start without a secret). The full table is in the [backend README](./backend/README.md).
 
 ### 3. Database & Prisma
 ```bash
 # In backend/
 $ npx prisma generate
 $ npx prisma migrate dev
+
+# Create the first admin (set ADMIN_EMAIL and ADMIN_PASSWORD in .env first)
+$ npm run seed
 ```
+
+Public sign-up always creates an EMPLOYEE. Only admins can create managers or other admins, so the seeded admin is how you get started.
 
 ### 4. Run Development Servers
 ```bash
@@ -140,7 +172,7 @@ $ npm run dev
 
 ## 🧩 Core Modules
 
-- **🔑 Authentication**: JWT login, registration, profile, RBAC guards ([auth README](./backend/src/auth/README.md))
+- **🔑 Authentication**: JWT login, registration, password reset by email, profile, RBAC guards ([auth README](./backend/src/auth/README.md))
 - **👤 Users**: CRUD, hierarchy, team integration, soft delete ([users README](./backend/src/users/README.md))
 - **🏢 Teams**: Team creation, membership, manager assignment, RBAC ([teams README](./backend/src/teams/README.md))
 - **💬 Messaging**: One-to-one, group, real-time chat, REST + WebSocket ([messaging README](./backend/src/messaging/README.md))

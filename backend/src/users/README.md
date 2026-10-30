@@ -18,7 +18,7 @@ This module provides comprehensive user management functionality for the OrgNet 
 ### Core User Management
 
 #### POST /users
-Create a new user (Admin/Manager only).
+Create a new user (Admin/Manager only). Managers may create only `EMPLOYEE` and `INTERN` accounts; creating `ADMIN` or `MANAGER` accounts is admin-only (403 otherwise).
 
 **Request Body:**
 ```json
@@ -48,7 +48,7 @@ Get current user's profile (requires authentication).
 Get specific user details (hierarchy-protected).
 
 #### PATCH /users/:id
-Update user information (hierarchy-protected).
+Update user information (hierarchy-protected). Users can edit themselves and managers can edit their direct subordinates, but **changing `role`, `parentId` or `isActive` requires an admin** (403 otherwise). Sending a field with its current value is accepted, so edit forms that always send every field keep working.
 
 #### DELETE /users/:id
 Deactivate user (Admin only).
@@ -113,7 +113,7 @@ Get user's team information (managed teams and memberships).
 ### Password Management
 
 #### PATCH /users/:id/change-password
-Change user password.
+Change user password. The body is validated (the new password needs at least 8 characters); changing someone else's password returns 403. To recover a forgotten password, use `POST /auth/forgot-password` instead.
 
 **Request Body:**
 ```json
@@ -152,8 +152,8 @@ ADMIN
 
 ### Access Control Rules
 
-1. **ADMIN**: Can access and manage all users
-2. **MANAGER**: Can access their direct subordinates and create users under them
+1. **ADMIN**: Can access and manage all users, and is the only role that can change roles, reporting lines or account status
+2. **MANAGER**: Can access their direct subordinates and create EMPLOYEE/INTERN users under them
 3. **EMPLOYEE**: Can access their own data and view their immediate superior
 4. **INTERN**: Can access only their own data
 
@@ -191,7 +191,7 @@ async create(@Body() createUserDto: CreateUserDto) {
 ## Service Methods
 
 ### Core CRUD
-- `create(createUserDto)`: Create new user
+- `create(createUserDto, requestingRole)`: Create new user (non-admins limited to EMPLOYEE/INTERN)
 - `findAll(page, limit, role, isActive)`: Get paginated users
 - `findOne(id)`: Get user by ID
 - `findByEmail(email)`: Get user by email
@@ -234,6 +234,7 @@ Comprehensive error handling with specific exception types:
 - **Circular Reference Prevention**: Validates parent-child assignments
 - **Soft Delete**: Users are deactivated rather than permanently deleted
 - **Input Validation**: Comprehensive DTO validation with class-validator
+- **Privilege Protection**: Role, reporting-line and status changes are admin-only, so users cannot promote themselves
 
 ## Database Integration
 

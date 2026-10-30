@@ -202,9 +202,11 @@ socket.on('error', (error) => {
 
 ### Automatic Features
 - **Authentication**: Connections without valid JWT tokens are automatically rejected
-- **Room Management**: Users are automatically joined to appropriate conversation rooms
+- **Room Management**: Users are joined to their conversation rooms (`user:<id>`, `direct:<a>:<b>`, `group:<id>`) when they connect. When a message is sent in a conversation that is new since they connected, the server joins both participants (or all group members) to the room just before broadcasting, so first messages are delivered live
 - **Presence Tracking**: Online/offline status is automatically managed
 - **Cleanup**: Typing indicators and presence are cleaned up on disconnection
+- **CORS**: The allowed browser origin is `FRONTEND_URL` (default `http://localhost:5173`)
+- **Token secret**: Tokens are verified with the same `JWT_SECRET` as the REST API; the server refuses to start without it
 
 ### Manual Disconnection
 ```javascript
